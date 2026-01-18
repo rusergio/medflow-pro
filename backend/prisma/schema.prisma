@@ -1,0 +1,111 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  DOCTOR
+  NURSE
+  ADMIN
+}
+
+enum PatientStatus {
+  ESTAVEL
+  CRITICO
+  EM_OBSERVACAO
+  ALTA
+}
+
+enum AppointmentType {
+  CONSULTA
+  RETORNO
+  EXAME
+  EMERGENCIA
+}
+
+enum AppointmentStatus {
+  AGENDADO
+  CONCLUIDO
+  CANCELADO
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      UserRole @default(DOCTOR)
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  appointments Appointment[]
+  medicalRecords MedicalRecord[]
+
+  @@map("users")
+}
+
+model Patient {
+  id        String        @id @default(uuid())
+  name      String
+  age       Int
+  gender    String // M, F, Outro
+  bloodType String
+  status    PatientStatus @default(ESTAVEL)
+  room      String?
+  email     String?
+  phone     String?
+  address   String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  appointments Appointment[]
+  medicalRecords MedicalRecord[]
+
+  @@map("patients")
+}
+
+model Appointment {
+  id         String            @id @default(uuid())
+  patientId  String
+  patient    Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId   String
+  doctor     User              @relation(fields: [doctorId], references: [id])
+  date       DateTime
+  type       AppointmentType
+  status     AppointmentStatus @default(AGENDADO)
+  notes      String?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  @@index([patientId])
+  @@index([doctorId])
+  @@index([date])
+  @@map("appointments")
+}
+
+model MedicalRecord {
+  id          String   @id @default(uuid())
+  patientId  String
+  patient    Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId   String
+  doctor     User     @relation(fields: [doctorId], references: [id])
+  date       DateTime @default(now())
+  diagnosis  String
+  notes      String
+  medication String[] // Array de strings
+  createdAt  DateTime @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([patientId])
+  @@index([doctorId])
+  @@map("medical_records")
+}
+

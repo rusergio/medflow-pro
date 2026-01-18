@@ -1,0 +1,9 @@
+
+{
+  "name": "MedFlow Pro - Hospital Management System",
+  "description": "A comprehensive hospital management platform featuring patient tracking, appointments, diagnostics, and a Gemini-powered medical assistant for clinical staff.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
