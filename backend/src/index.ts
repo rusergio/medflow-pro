@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import env from './config/env.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { ensureAdminUser } from './utils/seedAdmin.js';
 
 // Routes
 import authRoutes from './routes/authRoutes.js';
@@ -35,9 +36,19 @@ app.use(errorHandler);
 // Start server
 const PORT = Number(env.PORT) || 5000;
 
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor rodando na porta ${PORT}`);
-  console.log(`📊 Ambiente: ${env.NODE_ENV}`);
-  console.log(`🔗 Health check: http://localhost:${PORT}/health`);
-});
+const startServer = async () => {
+  try {
+    await ensureAdminUser();
+  } catch (error) {
+    console.error('Erro ao garantir usuário admin:', error);
+  }
+
+  app.listen(PORT, () => {
+    console.log(`🚀 Servidor rodando na porta ${PORT}`);
+    console.log(`📊 Ambiente: ${env.NODE_ENV}`);
+    console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+  });
+};
+
+startServer();
 

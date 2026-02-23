@@ -77,6 +77,10 @@ class ApiClient {
     return this.request<any>('/auth/me');
   }
 
+  async getUsers() {
+    return this.request<{ users: any[] }>('/auth/users');
+  }
+
   // Patients
   async getPatients(params?: { search?: string; status?: string; page?: number; limit?: number }) {
     const queryParams = new URLSearchParams();

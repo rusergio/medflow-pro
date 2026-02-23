@@ -15,6 +15,7 @@ export const getDashboardStats = async (req: Request, res: Response) => {
       scheduledSurgeries,
       patientsByStatus,
       appointmentsToday,
+      usersTotal,
     ] = await Promise.all([
       prisma.patient.count({
         where: {
@@ -56,6 +57,7 @@ export const getDashboardStats = async (req: Request, res: Response) => {
           },
         },
       }),
+      prisma.user.count(),
     ]);
 
     // Estatísticas de fluxo de pacientes (últimas 24h por hora)
@@ -98,6 +100,7 @@ export const getDashboardStats = async (req: Request, res: Response) => {
     });
 
     res.json({
+      usersTotal,
       stats: {
         totalPatients,
         patientsToday,
