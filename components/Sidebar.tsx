@@ -1,69 +1,194 @@
+import React, { useState } from 'react';
+import {
+  LayoutDashboardIcon, UsersIcon, CalendarIcon, BotIcon,
+  ChevronLeftIcon, ChevronRightIcon, ActivityIcon,
+  WifiIcon,
+} from 'lucide-react';
+import { LOGO } from '@/lib/logo';
 
-import React from 'react';
+/* ─────────────────────────────────────────────
+   Types
+───────────────────────────────────────────── */
+type Tab = 'dashboard' | 'patients' | 'appointments' | 'chat';
 
 interface SidebarProps {
-  activeTab: 'dashboard' | 'patients' | 'appointments' | 'chat' | 'profile' | 'settings';
-  setActiveTab: (tab: 'dashboard' | 'patients' | 'appointments' | 'chat' | 'profile' | 'settings') => void;
+  activeTab: Tab;
+  setActiveTab: (tab: Tab) => void;
 }
 
+/* ─────────────────────────────────────────────
+   Menu items
+───────────────────────────────────────────── */
+const MENU: { id: Tab; label: string; icon: React.ReactNode }[] = [
+  { id: 'dashboard',    label: 'Painel Geral',   icon: <LayoutDashboardIcon className="w-5 h-5" /> },
+  { id: 'patients',     label: 'Pacientes',      icon: <UsersIcon className="w-5 h-5" /> },
+  { id: 'appointments', label: 'Agendamentos',   icon: <CalendarIcon className="w-5 h-5" /> },
+  { id: 'chat',         label: 'Assistente IA',  icon: <BotIcon className="w-5 h-5" /> },
+];
+
+/* ─────────────────────────────────────────────
+   Sidebar
+───────────────────────────────────────────── */
 const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
-  const menuItems = [
-    { id: 'dashboard', label: 'Painel Geral', icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
-    )},
-    { id: 'patients', label: 'Pacientes', icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
-    )},
-    { id: 'appointments', label: 'Agendamentos', icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-    )},
-    { id: 'chat', label: 'Assistente IA', icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
-    )},
-    { id: 'profile', label: 'Meu Perfil', icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-    )},
-    { id: 'settings', label: 'Configurações', icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-    )},
-  ];
+  const [collapsed, setCollapsed] = useState(false);
+  const [hovered, setHovered] = useState<Tab | null>(null);
 
   return (
-    <div className="w-20 md:w-64 bg-white border-r border-slate-200 flex flex-col transition-all duration-300">
-      <div className="p-4 flex items-center gap-3 border-b border-slate-100">
-        <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold shrink-0">MF</div>
-        <span className="hidden md:block font-bold text-xl text-slate-800 tracking-tight">MedFlow<span className="text-blue-600">Pro</span></span>
-      </div>
-      
-      <nav className="flex-1 py-4 px-3 space-y-1">
-        {menuItems.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => setActiveTab(item.id as any)}
-            className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg font-medium transition-colors ${
-              activeTab === item.id 
-                ? 'bg-blue-50 text-blue-600 shadow-sm' 
-                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
-            }`}
-          >
-            <span className={`${activeTab === item.id ? 'text-blue-600' : 'text-slate-400'}`}>
-              {item.icon}
-            </span>
-            <span className="hidden md:block truncate">{item.label}</span>
-          </button>
-        ))}
-      </nav>
+    <>
+      <style>{`
+        @keyframes fadeInLeft {
+          from { opacity: 0; transform: translateX(-6px); }
+          to   { opacity: 1; transform: translateX(0); }
+        }
+        .sidebar-label { animation: fadeInLeft 0.18s ease both; }
+        .sidebar-tooltip {
+          position: absolute;
+          left: calc(100% + 12px);
+          top: 50%;
+          transform: translateY(-50%);
+          background: #1e293b;
+          color: white;
+          font-size: 12px;
+          font-weight: 600;
+          padding: 5px 10px;
+          border-radius: 8px;
+          white-space: nowrap;
+          pointer-events: none;
+          z-index: 999;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .sidebar-tooltip::before {
+          content: '';
+          position: absolute;
+          right: 100%;
+          top: 50%;
+          transform: translateY(-50%);
+          border: 5px solid transparent;
+          border-right-color: #1e293b;
+        }
+      `}</style>
 
-      <div className="p-4 border-t border-slate-100">
-        <div className="bg-slate-50 rounded-xl p-3 hidden md:block">
-          <p className="text-xs font-semibold text-slate-400 uppercase mb-2">Hospital Medflow</p>
-          <div className="flex items-center gap-2 text-sm text-slate-600">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-            Sistemas OK
+      <aside
+        className="relative flex flex-col bg-white dark:bg-slate-900 border-r-2 border-slate-100 dark:border-white/10 transition-all duration-300 ease-in-out shrink-0"
+        style={{ width: collapsed ? '72px' : '240px' }}
+      >
+        {/* ── Logo ── */}
+        <div className={`flex items-center border-b-2 border-slate-100 dark:border-white/10 h-16 transition-all duration-300 ${collapsed ? 'px-4 justify-center' : 'px-5 gap-3'}`}>
+          <div className="w-9 h-9 rounded-xl overflow-hidden shrink-0 bg-primary flex items-center justify-center">
+            <img src={LOGO.main} alt="MedFlow" className="w-full h-full object-contain" onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = 'none';
+            }} />
+            <span className="text-white font-black text-sm hidden">MF</span>
           </div>
+          {!collapsed && (
+            <span className="sidebar-label font-bold text-lg text-slate-800 dark:text-white tracking-tight whitespace-nowrap">
+              MedFlow<span className="text-primary">Pro</span>
+            </span>
+          )}
         </div>
-      </div>
-    </div>
+
+        {/* ── Nav ── */}
+        <nav className="flex-1 py-4 px-3 space-y-1 overflow-hidden">
+          {MENU.map((item) => {
+            const isActive = activeTab === item.id;
+            return (
+              <div
+                key={item.id}
+                className="relative"
+                onMouseEnter={() => setHovered(item.id)}
+                onMouseLeave={() => setHovered(null)}
+              >
+                <button
+                  onClick={() => setActiveTab(item.id)}
+                  className={[
+                    'w-full flex items-center rounded-xl transition-all duration-200 group',
+                    collapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5',
+                    isActive
+                      ? 'bg-primary text-white shadow-md shadow-primary/25'
+                      : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/5 hover:text-slate-800 dark:hover:text-white',
+                  ].join(' ')}
+                >
+                  {/* icon */}
+                  <span className={[
+                    'shrink-0 transition-transform duration-200',
+                    !isActive && 'group-hover:scale-110',
+                  ].join(' ')}>
+                    {item.icon}
+                  </span>
+
+                  {/* label */}
+                  {!collapsed && (
+                    <span className="sidebar-label text-sm font-semibold truncate">
+                      {item.label}
+                    </span>
+                  )}
+
+                  {/* active dot when collapsed */}
+                  {isActive && collapsed && (
+                    <span className="absolute right-1.5 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-white/80" />
+                  )}
+                </button>
+
+                {/* Tooltip when collapsed */}
+                {collapsed && hovered === item.id && (
+                  <div className="sidebar-tooltip">{item.label}</div>
+                )}
+              </div>
+            );
+          })}
+        </nav>
+
+        {/* ── Status block ── */}
+        {!collapsed && (
+          <div className="mx-3 mb-3 p-3 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/10 sidebar-label">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2.5">
+              Hospital MedFlow
+            </p>
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+              </span>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Sistemas OK</span>
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+              <WifiIcon className="w-3 h-3 text-slate-400" />
+              <span className="text-[11px] text-slate-400">Tempo real · 0ms</span>
+            </div>
+          </div>
+        )}
+
+        {/* collapsed status dot */}
+        {collapsed && (
+          <div className="flex justify-center mb-4">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+            </span>
+          </div>
+        )}
+
+        {/* ── Collapse toggle ── */}
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className={[
+            'absolute -right-3.5 top-1/2 -translate-y-1/2',
+            'w-7 h-7 rounded-full bg-white dark:bg-slate-800',
+            'border-2 border-slate-100 dark:border-white/15',
+            'flex items-center justify-center',
+            'text-slate-400 hover:text-primary hover:border-primary/40',
+            'transition-all duration-200 shadow-sm',
+            'z-10',
+          ].join(' ')}
+          aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}
+        >
+          {collapsed
+            ? <ChevronRightIcon className="w-3.5 h-3.5" />
+            : <ChevronLeftIcon className="w-3.5 h-3.5" />
+          }
+        </button>
+      </aside>
+    </>
   );
 };
 

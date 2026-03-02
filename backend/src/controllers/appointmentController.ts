@@ -4,12 +4,20 @@ import prisma from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.js';
 import { transformAppointmentType, transformAppointmentStatus, formatDateTime } from '../utils/transformers.js';
 
+const tipoEnum = ['PRIMEIRA_CONSULTA', 'SEGUIMENTO', 'CONSULTA', 'RETORNO', 'EXAME', 'EMERGENCIA'] as const;
+const statusEnum = ['AGENDADA', 'CONFIRMADA', 'CANCELADA', 'FALTA', 'REALIZADA'] as const;
+const origemEnum = ['MEDICO_FAMILIA', 'INTERNO', 'REFERENCIADO'] as const;
+
 const createAppointmentSchema = z.object({
   patientId: z.string().uuid(),
-  date: z.string(), // Acepta date o datetime
-  time: z.string().optional(), // Para compatibilidad con frontend
-  type: z.enum(['CONSULTA', 'RETORNO', 'EXAME', 'EMERGENCIA', 'Consulta', 'Retorno', 'Exame', 'Emergência']).transform((val) => {
+  date: z.string(),
+  time: z.string().optional(),
+  especialidadeId: z.string().uuid().optional(),
+  sala: z.string().optional(),
+  tipo: z.enum(tipoEnum).or(z.enum(['Primeira consulta', 'Seguimento', 'Consulta', 'Retorno', 'Exame', 'Emergência'])).transform((val) => {
     const map: Record<string, string> = {
+      'Primeira consulta': 'PRIMEIRA_CONSULTA',
+      'Seguimento': 'SEGUIMENTO',
       'Consulta': 'CONSULTA',
       'Retorno': 'RETORNO',
       'Exame': 'EXAME',
@@ -17,29 +25,27 @@ const createAppointmentSchema = z.object({
     };
     return map[val] || val;
   }),
+  origem: z.enum(origemEnum).optional(),
   notes: z.string().optional(),
 });
 
 const updateAppointmentSchema = z.object({
-  date: z.string().optional(), // Acepta date o datetime
-  time: z.string().optional(), // Para compatibilidad con frontend
-  type: z.enum(['CONSULTA', 'RETORNO', 'EXAME', 'EMERGENCIA', 'Consulta', 'Retorno', 'Exame', 'Emergência']).transform((val) => {
+  date: z.string().optional(),
+  time: z.string().optional(),
+  especialidadeId: z.string().uuid().optional().nullable(),
+  sala: z.string().optional(),
+  tipo: z.enum(tipoEnum).optional(),
+  status: z.enum(statusEnum).or(z.enum(['Agendada', 'Confirmada', 'Cancelada', 'Falta', 'Realizada'])).transform((val) => {
     const map: Record<string, string> = {
-      'Consulta': 'CONSULTA',
-      'Retorno': 'RETORNO',
-      'Exame': 'EXAME',
-      'Emergência': 'EMERGENCIA',
+      'Agendada': 'AGENDADA',
+      'Confirmada': 'CONFIRMADA',
+      'Cancelada': 'CANCELADA',
+      'Falta': 'FALTA',
+      'Realizada': 'REALIZADA',
     };
     return map[val] || val;
   }).optional(),
-  status: z.enum(['AGENDADO', 'CONCLUIDO', 'CANCELADO', 'Agendado', 'Concluído', 'Cancelado']).transform((val) => {
-    const map: Record<string, string> = {
-      'Agendado': 'AGENDADO',
-      'Concluído': 'CONCLUIDO',
-      'Cancelado': 'CANCELADO',
-    };
-    return map[val] || val;
-  }).optional(),
+  origem: z.enum(origemEnum).optional().nullable(),
   notes: z.string().optional(),
 });
 
@@ -54,24 +60,12 @@ export const getAppointments = async (req: Request, res: Response) => {
       startDate.setHours(0, 0, 0, 0);
       const endDate = new Date(startDate);
       endDate.setDate(endDate.getDate() + 1);
-
-      where.date = {
-        gte: startDate,
-        lt: endDate,
-      };
+      where.date = { gte: startDate, lt: endDate };
     }
 
-    if (status) {
-      where.status = status;
-    }
-
-    if (doctorId) {
-      where.doctorId = doctorId;
-    }
-
-    if (patientId) {
-      where.patientId = patientId;
-    }
+    if (status) where.status = status;
+    if (doctorId) where.doctorId = doctorId;
+    if (patientId) where.patientId = patientId;
 
     const skip = (Number(page) - 1) * Number(limit);
     const take = Number(limit);
@@ -86,8 +80,9 @@ export const getAppointments = async (req: Request, res: Response) => {
           patient: {
             select: {
               id: true,
-              name: true,
-              age: true,
+              nome: true,
+              numeroUtente: true,
+              numeroProvisorio: true,
               status: true,
             },
           },
@@ -98,28 +93,35 @@ export const getAppointments = async (req: Request, res: Response) => {
               role: true,
             },
           },
+          especialidade: {
+            select: {
+              id: true,
+              nome: true,
+            },
+          },
         },
       }),
       prisma.appointment.count({ where }),
     ]);
 
-    // Transformar para formato del frontend
-    const transformedAppointments = appointments.map((appointment) => {
-      const { date, time } = formatDateTime(appointment.date);
+    const transformed = appointments.map((a) => {
+      const { date, time } = formatDateTime(a.date);
       return {
-        id: appointment.id,
-        patientId: appointment.patientId,
-        patientName: appointment.patient.name,
-        doctorName: appointment.doctor.name,
+        id: a.id,
+        patientId: a.patientId,
+        patientName: a.patient.nome,
+        numeroUtente: a.patient.numeroUtente || a.patient.numeroProvisorio,
+        doctorName: a.doctor.name,
+        especialidade: a.especialidade?.nome,
         date,
         time,
-        type: transformAppointmentType.toFrontend(appointment.type),
-        status: transformAppointmentStatus.toFrontend(appointment.status),
+        type: transformAppointmentType.toFrontend(a.tipo),
+        status: transformAppointmentStatus.toFrontend(a.status),
       };
     });
 
     res.json({
-      appointments: transformedAppointments,
+      appointments: transformed,
       pagination: {
         page: Number(page),
         limit: take,
@@ -140,14 +142,8 @@ export const getAppointmentById = async (req: Request, res: Response) => {
       where: { id },
       include: {
         patient: true,
-        doctor: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
-          },
-        },
+        doctor: { select: { id: true, name: true, email: true, role: true } },
+        especialidade: true,
       },
     });
 
@@ -156,18 +152,17 @@ export const getAppointmentById = async (req: Request, res: Response) => {
     }
 
     const { date, time } = formatDateTime(appointment.date);
-    const transformedAppointment = {
+    res.json({
       id: appointment.id,
       patientId: appointment.patientId,
-      patientName: appointment.patient.name,
+      patientName: appointment.patient.nome,
       doctorName: appointment.doctor.name,
+      especialidade: appointment.especialidade,
       date,
       time,
-      type: transformAppointmentType.toFrontend(appointment.type),
+      type: transformAppointmentType.toFrontend(appointment.tipo),
       status: transformAppointmentStatus.toFrontend(appointment.status),
-    };
-
-    res.json(transformedAppointment);
+    });
   } catch (error) {
     throw error;
   }
@@ -175,59 +170,47 @@ export const getAppointmentById = async (req: Request, res: Response) => {
 
 export const createAppointment = async (req: AuthRequest, res: Response) => {
   try {
-    const inputData = createAppointmentSchema.parse(req.body);
+    const input = createAppointmentSchema.parse(req.body);
     const doctorId = req.userId!;
 
-    // Si viene date y time separados, combinarlos
     let appointmentDate: Date;
-    if (inputData.date.includes('T') || inputData.date.includes(' ')) {
-      // Ya viene como datetime
-      appointmentDate = new Date(inputData.date);
+    if (input.date.includes('T') || input.date.includes(' ')) {
+      appointmentDate = new Date(input.date);
     } else {
-      // Si solo viene date, usar time del body o default
-      const time = inputData.time || (req.body as any).time || '09:00';
-      appointmentDate = new Date(`${inputData.date}T${time}:00`);
+      const time = input.time || (req.body as any).time || '09:00';
+      appointmentDate = new Date(`${input.date}T${time}:00`);
     }
 
     const appointment = await prisma.appointment.create({
       data: {
-        patientId: inputData.patientId,
-        date: appointmentDate,
-        type: inputData.type,
-        notes: inputData.notes,
+        patientId: input.patientId,
         doctorId,
+        date: appointmentDate,
+        tipo: input.tipo as any,
+        especialidadeId: input.especialidadeId || undefined,
+        sala: input.sala || undefined,
+        origem: input.origem as any,
+        notes: input.notes || undefined,
       },
       include: {
-        patient: {
-          select: {
-            id: true,
-            name: true,
-            age: true,
-          },
-        },
-        doctor: {
-          select: {
-            id: true,
-            name: true,
-            role: true,
-          },
-        },
+        patient: { select: { id: true, nome: true } },
+        doctor: { select: { id: true, name: true, role: true } },
+        especialidade: true,
       },
     });
 
     const { date, time } = formatDateTime(appointment.date);
-    const transformedAppointment = {
+    res.status(201).json({
       id: appointment.id,
       patientId: appointment.patientId,
-      patientName: appointment.patient.name,
+      patientName: appointment.patient.nome,
       doctorName: appointment.doctor.name,
+      especialidade: appointment.especialidade?.nome,
       date,
       time,
-      type: transformAppointmentType.toFrontend(appointment.type),
+      type: transformAppointmentType.toFrontend(appointment.tipo),
       status: transformAppointmentStatus.toFrontend(appointment.status),
-    };
-
-    res.status(201).json(transformedAppointment);
+    });
   } catch (error) {
     throw error;
   }
@@ -236,64 +219,46 @@ export const createAppointment = async (req: AuthRequest, res: Response) => {
 export const updateAppointment = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const inputData = updateAppointmentSchema.parse(req.body);
+    const input = updateAppointmentSchema.parse(req.body);
 
     const updateData: any = {};
-    
-    if (inputData.date) {
-      // Si viene date y time separados, combinarlos
-      if (inputData.date.includes('T')) {
-        updateData.date = new Date(inputData.date);
+    if (input.date) {
+      if (input.date.includes('T')) {
+        updateData.date = new Date(input.date);
       } else {
         const time = (req.body as any).time || '09:00';
-        updateData.date = new Date(`${inputData.date}T${time}`);
+        updateData.date = new Date(`${input.date}T${time}:00`);
       }
     }
-    
-    if (inputData.type) {
-      updateData.type = transformAppointmentType.toBackend(inputData.type);
-    }
-    
-    if (inputData.status) {
-      updateData.status = transformAppointmentStatus.toBackend(inputData.status);
-    }
-    
-    if (inputData.notes !== undefined) {
-      updateData.notes = inputData.notes;
-    }
+    if (input.tipo) updateData.tipo = input.tipo;
+    if (input.status) updateData.status = input.status;
+    if (input.especialidadeId !== undefined) updateData.especialidadeId = input.especialidadeId;
+    if (input.sala !== undefined) updateData.sala = input.sala;
+    if (input.origem !== undefined) updateData.origem = input.origem;
+    if (input.notes !== undefined) updateData.notes = input.notes;
 
     const appointment = await prisma.appointment.update({
       where: { id },
       data: updateData,
       include: {
-        patient: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        doctor: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
+        patient: { select: { id: true, nome: true } },
+        doctor: { select: { id: true, name: true } },
+        especialidade: true,
       },
     });
 
     const { date, time } = formatDateTime(appointment.date);
-    const transformedAppointment = {
+    res.json({
       id: appointment.id,
       patientId: appointment.patientId,
-      patientName: appointment.patient.name,
+      patientName: appointment.patient.nome,
       doctorName: appointment.doctor.name,
+      especialidade: appointment.especialidade?.nome,
       date,
       time,
-      type: transformAppointmentType.toFrontend(appointment.type),
+      type: transformAppointmentType.toFrontend(appointment.tipo),
       status: transformAppointmentStatus.toFrontend(appointment.status),
-    };
-
-    res.json(transformedAppointment);
+    });
   } catch (error) {
     throw error;
   }
@@ -302,14 +267,9 @@ export const updateAppointment = async (req: Request, res: Response) => {
 export const deleteAppointment = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-
-    await prisma.appointment.delete({
-      where: { id },
-    });
-
+    await prisma.appointment.delete({ where: { id } });
     res.status(204).send();
   } catch (error) {
     throw error;
   }
 };
-

@@ -2,30 +2,67 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import prisma from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.js';
-import { transformPatientStatus, getLastVisit } from '../utils/transformers.js';
+import { transformUtenteStatus, getLastVisit } from '../utils/transformers.js';
+
+const tipoDocSchema = z.enum(['Passaporte', 'Cartão de residência', 'Outro']);
+const sexoSchema = z.enum(['M', 'F', 'Outro']);
 
 const createPatientSchema = z.object({
-  name: z.string().min(2),
-  age: z.number().int().min(0).max(150),
-  gender: z.enum(['M', 'F', 'Outro']),
-  bloodType: z.string(),
-  status: z.enum(['ESTAVEL', 'CRITICO', 'EM_OBSERVACAO', 'ALTA', 'Estável', 'Crítico', 'Em Observação', 'Alta']).transform((val) => {
-    // Si viene en formato frontend, transformar
-    const map: Record<string, string> = {
-      'Estável': 'ESTAVEL',
-      'Crítico': 'CRITICO',
-      'Em Observação': 'EM_OBSERVACAO',
-      'Alta': 'ALTA',
-    };
-    return map[val] || val;
-  }).default('ESTAVEL'),
-  room: z.string().optional(),
-  email: z.string().email().optional(),
-  phone: z.string().optional(),
-  address: z.string().optional(),
+  nome: z.string().min(2),
+  possuiNumeroUtente: z.boolean(),
+  numeroUtente: z.string().optional(),
+  numeroCc: z.string().optional(),
+  nif: z.string().optional(),
+  dataNascimento: z.string(),
+  sexo: sexoSchema,
+  nacionalidade: z.string().optional(),
+  // Provisório
+  tipoDocumento: tipoDocSchema.optional(),
+  numeroDocumento: z.string().optional(),
+  paisOrigem: z.string().optional(),
+  // Contacto
+  telemovel: z.string().min(9),
+  telefoneAlternativo: z.string().optional(),
+  email: z.string().email().optional().or(z.literal('')),
+  // Morada
+  rua: z.string().optional(),
+  codigoPostal: z.string().optional(),
+  localidade: z.string().optional(),
+  concelho: z.string().optional(),
+  distrito: z.string().optional(),
+  // Administrativo
+  unidadeHospitalar: z.string().optional(),
+  medicoFamilia: z.string().optional(),
+  centroSaude: z.string().optional(),
+  tipoAtendimento: z.enum(['CONSULTA_EXTERNA', 'URGENCIA', 'INTERNAMENTO', 'EXAME_COMPLEMENTAR']).optional(),
+  // Clínico
+  alergias: z.string().optional(),
+  doencasCronicas: z.string().optional(),
+  medicacaoHabitual: z.string().optional(),
+  grupoSanguineo: z.string().optional(),
+  observacoesClinicas: z.string().optional(),
+  status: z.enum(['ESTAVEL', 'CRITICO', 'EM_OBSERVACAO', 'ALTA']).default('ESTAVEL'),
+  quarto: z.string().optional(),
 });
 
 const updatePatientSchema = createPatientSchema.partial();
+
+// Gera PROV-2026-000001
+async function gerarNumeroProvisorio(): Promise<string> {
+  const year = new Date().getFullYear();
+  const count = await prisma.patient.count({
+    where: { registoProvisorio: true },
+  });
+  const seq = String(count + 1).padStart(6, '0');
+  return `PROV-${year}-${seq}`;
+}
+
+// Gera número do processo clínico
+async function gerarProcessoClinico(): Promise<string> {
+  const count = await prisma.patient.count();
+  const seq = String(count + 1).padStart(8, '0');
+  return seq;
+}
 
 export const getPatients = async (req: Request, res: Response) => {
   try {
@@ -34,9 +71,13 @@ export const getPatients = async (req: Request, res: Response) => {
     const where: any = {};
 
     if (search) {
+      const s = (search as string).trim();
       where.OR = [
-        { name: { contains: search as string, mode: 'insensitive' } },
-        { id: { contains: search as string } },
+        { nome: { contains: s, mode: 'insensitive' } },
+        { numeroUtente: { contains: s, mode: 'insensitive' } },
+        { numeroProvisorio: { contains: s, mode: 'insensitive' } },
+        { processoClinicoNum: { contains: s } },
+        { id: { contains: s } },
       ];
     }
 
@@ -73,22 +114,52 @@ export const getPatients = async (req: Request, res: Response) => {
       prisma.patient.count({ where }),
     ]);
 
-    // Transformar para formato del frontend
-    const transformedPatients = patients.map((patient) => ({
-      ...patient,
-      status: transformPatientStatus.toFrontend(patient.status),
-      lastVisit: getLastVisit(patient),
-      history: [], // Se puede poblar después si es necesario
+    const transformed = patients.map((p) => ({
+      ...p,
+      status: transformUtenteStatus.toFrontend(p.status),
+      lastVisit: getLastVisit(p),
+      history: [],
     }));
 
     res.json({
-      patients: transformedPatients,
+      patients: transformed,
       pagination: {
         page: Number(page),
         limit: take,
         total,
         totalPages: Math.ceil(total / take),
       },
+    });
+  } catch (error) {
+    throw error;
+  }
+};
+
+export const getPatientByNumeroUtente = async (req: Request, res: Response) => {
+  try {
+    const { numero } = req.query;
+    if (!numero || typeof numero !== 'string') {
+      return res.status(400).json({ error: 'Número de utente obrigatório' });
+    }
+    const patient = await prisma.patient.findFirst({
+      where: {
+        OR: [
+          { numeroUtente: { equals: numero, mode: 'insensitive' } },
+          { numeroProvisorio: { equals: numero, mode: 'insensitive' } },
+        ],
+      },
+      include: {
+        appointments: { orderBy: { date: 'desc' }, take: 5 },
+        medicalRecords: { orderBy: { date: 'desc' }, take: 5 },
+      },
+    });
+    if (!patient) {
+      return res.status(404).json({ error: 'Utente não encontrado' });
+    }
+    res.json({
+      ...patient,
+      status: transformUtenteStatus.toFrontend(patient.status),
+      lastVisit: getLastVisit(patient),
     });
   } catch (error) {
     throw error;
@@ -106,51 +177,38 @@ export const getPatientById = async (req: Request, res: Response) => {
           orderBy: { date: 'desc' },
           take: 10,
           include: {
-            doctor: {
-              select: {
-                id: true,
-                name: true,
-                role: true,
-              },
-            },
+            doctor: { select: { id: true, name: true, role: true } },
           },
         },
         medicalRecords: {
           orderBy: { date: 'desc' },
           take: 10,
           include: {
-            doctor: {
-              select: {
-                id: true,
-                name: true,
-                role: true,
-              },
-            },
+            doctor: { select: { id: true, name: true, role: true } },
           },
         },
       },
     });
 
     if (!patient) {
-      return res.status(404).json({ error: 'Paciente não encontrado' });
+      return res.status(404).json({ error: 'Utente não encontrado' });
     }
 
-    // Transformar para formato del frontend
-    const transformedPatient = {
+    const transformed = {
       ...patient,
-      status: transformPatientStatus.toFrontend(patient.status),
+      status: transformUtenteStatus.toFrontend(patient.status),
       lastVisit: getLastVisit(patient),
-      history: patient.medicalRecords.map((record) => ({
-        id: record.id,
-        date: record.date.toISOString().split('T')[0],
-        diagnosis: record.diagnosis,
-        doctorName: record.doctor.name,
-        notes: record.notes,
-        medication: record.medication,
+      history: patient.medicalRecords.map((r) => ({
+        id: r.id,
+        date: r.date.toISOString().split('T')[0],
+        diagnosis: r.diagnosis,
+        doctorName: r.doctor.name,
+        notes: r.notes,
+        medication: r.medication,
       })),
     };
 
-    res.json(transformedPatient);
+    res.json(transformed);
   } catch (error) {
     throw error;
   }
@@ -158,12 +216,69 @@ export const getPatientById = async (req: Request, res: Response) => {
 
 export const createPatient = async (req: AuthRequest, res: Response) => {
   try {
-    const inputData = createPatientSchema.parse(req.body);
-    
-    // Transformar status del frontend al backend
+    const input = createPatientSchema.parse(req.body);
+
+    const dataNascimento = new Date(input.dataNascimento);
+    if (isNaN(dataNascimento.getTime())) {
+      return res.status(400).json({ error: 'Data de nascimento inválida' });
+    }
+
+    const registoProvisorio = !input.possuiNumeroUtente;
+    let numeroUtente: string | null = input.possuiNumeroUtente && input.numeroUtente ? input.numeroUtente.trim() : null;
+    let numeroProvisorio: string | null = null;
+
+    if (registoProvisorio) {
+      numeroProvisorio = await gerarNumeroProvisorio();
+      if (!input.tipoDocumento || !input.numeroDocumento) {
+        return res.status(400).json({ error: 'Registo provisório: tipo e número do documento são obrigatórios' });
+      }
+    } else {
+      if (!numeroUtente) {
+        return res.status(400).json({ error: 'Número de Utente SNS é obrigatório' });
+      }
+      const existing = await prisma.patient.findUnique({
+        where: { numeroUtente },
+      });
+      if (existing) {
+        return res.status(400).json({ error: 'Já existe um utente com este número SNS' });
+      }
+    }
+
+    const processoClinicoNum = await gerarProcessoClinico();
+
     const data = {
-      ...inputData,
-      status: inputData.status ? transformPatientStatus.toBackend(inputData.status) : undefined,
+      nome: input.nome.trim(),
+      numeroUtente,
+      numeroProvisorio,
+      registoProvisorio,
+      numeroCc: input.numeroCc?.trim() || undefined,
+      nif: input.nif?.trim() || undefined,
+      dataNascimento,
+      sexo: input.sexo,
+      nacionalidade: input.nacionalidade?.trim() || undefined,
+      tipoDocumento: input.tipoDocumento || undefined,
+      numeroDocumento: input.numeroDocumento?.trim() || undefined,
+      paisOrigem: input.paisOrigem?.trim() || undefined,
+      telemovel: input.telemovel.trim(),
+      telefoneAlternativo: input.telefoneAlternativo?.trim() || undefined,
+      email: input.email?.trim() || undefined,
+      rua: input.rua?.trim() || undefined,
+      codigoPostal: input.codigoPostal?.trim() || undefined,
+      localidade: input.localidade?.trim() || undefined,
+      concelho: input.concelho?.trim() || undefined,
+      distrito: input.distrito?.trim() || undefined,
+      processoClinicoNum,
+      unidadeHospitalar: input.unidadeHospitalar?.trim() || undefined,
+      medicoFamilia: input.medicoFamilia?.trim() || undefined,
+      centroSaude: input.centroSaude?.trim() || undefined,
+      tipoAtendimento: input.tipoAtendimento as any,
+      alergias: input.alergias?.trim() || undefined,
+      doencasCronicas: input.doencasCronicas?.trim() || undefined,
+      medicacaoHabitual: input.medicacaoHabitual?.trim() || undefined,
+      grupoSanguineo: input.grupoSanguineo || undefined,
+      observacoesClinicas: input.observacoesClinicas?.trim() || undefined,
+      status: (input.status || 'ESTAVEL') as any,
+      quarto: input.quarto?.trim() || undefined,
     };
 
     const patient = await prisma.patient.create({
@@ -174,15 +289,14 @@ export const createPatient = async (req: AuthRequest, res: Response) => {
       },
     });
 
-    // Transformar respuesta al formato del frontend
-    const transformedPatient = {
+    const transformed = {
       ...patient,
-      status: transformPatientStatus.toFrontend(patient.status),
+      status: transformUtenteStatus.toFrontend(patient.status),
       lastVisit: getLastVisit(patient),
       history: [],
     };
 
-    res.status(201).json(transformedPatient);
+    res.status(201).json(transformed);
   } catch (error) {
     throw error;
   }
@@ -191,13 +305,13 @@ export const createPatient = async (req: AuthRequest, res: Response) => {
 export const updatePatient = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const inputData = updatePatientSchema.parse(req.body);
+    const input = updatePatientSchema.parse(req.body);
 
-    // Transformar status del frontend al backend si viene
-    const data: any = { ...inputData };
-    if (inputData.status) {
-      data.status = transformPatientStatus.toBackend(inputData.status);
+    const data: any = { ...input };
+    if (input.dataNascimento) {
+      data.dataNascimento = new Date(input.dataNascimento);
     }
+    delete data.possuiNumeroUtente;
 
     const patient = await prisma.patient.update({
       where: { id },
@@ -208,15 +322,14 @@ export const updatePatient = async (req: Request, res: Response) => {
       },
     });
 
-    // Transformar respuesta al formato del frontend
-    const transformedPatient = {
+    const transformed = {
       ...patient,
-      status: transformPatientStatus.toFrontend(patient.status),
+      status: transformUtenteStatus.toFrontend(patient.status),
       lastVisit: getLastVisit(patient),
       history: [],
     };
 
-    res.json(transformedPatient);
+    res.json(transformed);
   } catch (error) {
     throw error;
   }
@@ -225,14 +338,9 @@ export const updatePatient = async (req: Request, res: Response) => {
 export const deletePatient = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-
-    await prisma.patient.delete({
-      where: { id },
-    });
-
+    await prisma.patient.delete({ where: { id } });
     res.status(204).send();
   } catch (error) {
     throw error;
   }
 };
-

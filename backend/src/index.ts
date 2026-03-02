@@ -2,11 +2,12 @@ import express from 'express';
 import cors from 'cors';
 import env from './config/env.js';
 import { errorHandler } from './middleware/errorHandler.js';
-import { ensureAdminUser } from './utils/seedAdmin.js';
+import { ensureAdminUser, ensureEspecialidades } from './utils/seedAdmin.js';
 
 // Routes
 import authRoutes from './routes/authRoutes.js';
 import patientRoutes from './routes/patientRoutes.js';
+import especialidadeRoutes from './routes/especialidadeRoutes.js';
 import appointmentRoutes from './routes/appointmentRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
 import aiRoutes from './routes/aiRoutes.js';
@@ -26,6 +27,7 @@ app.get('/health', (req, res) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/patients', patientRoutes);
+app.use('/api/especialidades', especialidadeRoutes);
 app.use('/api/appointments', appointmentRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/ai', aiRoutes);
@@ -39,8 +41,9 @@ const PORT = Number(env.PORT) || 5000;
 const startServer = async () => {
   try {
     await ensureAdminUser();
+    await ensureEspecialidades();
   } catch (error) {
-    console.error('Erro ao garantir usuário admin:', error);
+    console.error('Erro ao iniciar seeds:', error);
   }
 
   app.listen(PORT, () => {

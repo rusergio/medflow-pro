@@ -77,6 +77,34 @@ class ApiClient {
     return this.request<any>('/auth/me');
   }
 
+  async updateProfile(data: { email?: string; phone?: string }) {
+    return this.request<any>('/auth/me', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async changePassword(currentPassword: string, newPassword: string) {
+    return this.request<{ success: boolean }>('/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  }
+
+  async activatePin(pin: string) {
+    return this.request<{ success: boolean }>('/auth/activate-pin', {
+      method: 'POST',
+      body: JSON.stringify({ pin }),
+    });
+  }
+
+  async forgotPassword(email: string, pin: string, newPassword: string) {
+    return this.request<{ success: boolean }>('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email, pin, newPassword }),
+    });
+  }
+
   async getUsers() {
     return this.request<{ users: any[] }>('/auth/users');
   }
@@ -95,6 +123,14 @@ class ApiClient {
 
   async getPatientById(id: string) {
     return this.request<any>(`/patients/${id}`);
+  }
+
+  async getPatientByNumero(numero: string) {
+    return this.request<any>(`/patients/by-numero?numero=${encodeURIComponent(numero)}`);
+  }
+
+  async getEspecialidades() {
+    return this.request<{ id: string; nome: string }[]>('/especialidades');
   }
 
   async createPatient(patientData: any) {
@@ -142,7 +178,16 @@ class ApiClient {
     return this.request<any>(`/appointments/${id}`);
   }
 
-  async createAppointment(appointmentData: any) {
+  async createAppointment(appointmentData: {
+    patientId: string;
+    date: string;
+    time?: string;
+    tipo?: string;
+    especialidadeId?: string;
+    sala?: string;
+    origem?: string;
+    notes?: string;
+  }) {
     return this.request<any>('/appointments', {
       method: 'POST',
       body: JSON.stringify(appointmentData),

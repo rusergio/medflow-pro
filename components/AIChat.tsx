@@ -1,149 +1,366 @@
-
 import React, { useState, useRef, useEffect } from 'react';
-import { api } from '../services/api';
-import { ChatMessage } from '../types';
+import {
+  SendIcon, BotIcon, UserIcon, TrashIcon,
+  SparklesIcon, ClipboardIcon, CheckIcon,
+  StethoscopeIcon, PillIcon, FileTextIcon, ActivityIcon,
+} from 'lucide-react';
 
-const AIChat: React.FC = () => {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: '1',
-      role: 'assistant',
-      content: 'Olá! Sou seu Assistente Clínico IA. Em que posso ajudar hoje? Posso auxiliar com dosagens, protocolos ou resumos de artigos médicos.',
-      timestamp: new Date()
-    }
-  ]);
-  const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
+/* ─────────────────────────────────────────────
+   Types
+───────────────────────────────────────────── */
+interface Message {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+}
 
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages]);
+/* ─────────────────────────────────────────────
+   Quick suggestions
+───────────────────────────────────────────── */
+const SUGGESTIONS = [
+  { icon: <PillIcon className="w-3.5 h-3.5" />,        text: 'Calcular dosagem de amoxicilina para criança de 20kg' },
+  { icon: <StethoscopeIcon className="w-3.5 h-3.5" />, text: 'Protocolo de atendimento para dor torácica aguda'     },
+  { icon: <ActivityIcon className="w-3.5 h-3.5" />,    text: 'Interpretação de valores de troponina elevados'       },
+  { icon: <FileTextIcon className="w-3.5 h-3.5" />,    text: 'Critérios diagnósticos para sepse'                   },
+];
 
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
+/* ─────────────────────────────────────────────
+   System prompt
+───────────────────────────────────────────── */
+const SYSTEM_PROMPT = `Você é um Assistente Clínico IA integrado ao sistema MedFlow Pro, desenvolvido para apoiar profissionais de saúde.
 
-    const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: input,
-      timestamp: new Date()
-    };
+Suas capacidades:
+- Calcular dosagens medicamentosas com base em peso, idade e condição clínica
+- Explicar protocolos clínicos atualizados
+- Resumir e interpretar artigos e estudos médicos
+- Auxiliar no diagnóstico diferencial com base em sintomas e exames
+- Fornecer informações sobre interações medicamentosas
+- Esclarecer dúvidas sobre procedimentos e técnicas
 
-    setMessages(prev => [...prev, userMessage]);
-    setInput('');
-    setIsLoading(true);
+Diretrizes:
+- Sempre enfatize que suas respostas são de apoio à decisão, não substituem o julgamento clínico
+- Seja preciso, claro e use terminologia médica adequada
+- Quando calcular dosagens, mostre o cálculo passo a passo
+- Para situações de emergência, sempre indique os cuidados imediatos prioritários
+- Responda em Português de Portugal/Brasil conforme o contexto
 
-    try {
-      const { response } = await api.sendChatMessage(input);
-      
-      const assistantMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: response,
-        timestamp: new Date()
-      };
+Lembre-se: você é uma ferramenta de auxílio. O profissional de saúde tem a responsabilidade final.`;
 
-      setMessages(prev => [...prev, assistantMessage]);
-    } catch (error: any) {
-      const errorMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: error.message || 'Ocorreu um erro ao conectar com o assistente de IA. Verifique sua conexão.',
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setIsLoading(false);
-    }
+/* ─────────────────────────────────────────────
+   Copy button
+───────────────────────────────────────────── */
+const CopyButton: React.FC<{ text: string }> = ({ text }) => {
+  const [copied, setCopied] = useState(false);
+  const handle = () => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
   };
+  return (
+    <button
+      onClick={handle}
+      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-white/10"
+      title="Copiar"
+    >
+      {copied
+        ? <CheckIcon className="w-3.5 h-3.5 text-green-500" />
+        : <ClipboardIcon className="w-3.5 h-3.5" />
+      }
+    </button>
+  );
+};
+
+/* ─────────────────────────────────────────────
+   Message bubble
+───────────────────────────────────────────── */
+const Bubble: React.FC<{ msg: Message }> = ({ msg }) => {
+  const isUser = msg.role === 'user';
 
   return (
-    <div className="h-full flex flex-col gap-6">
-      <div className="flex items-center justify-between shrink-0">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            Assistente IA 
-            <span className="px-2 py-0.5 bg-blue-100 text-blue-600 text-[10px] rounded-full uppercase tracking-wider font-bold">Beta</span>
-          </h1>
-          <p className="text-slate-500">Suporte clínico baseado em IA para profissionais de saúde</p>
-        </div>
-        <button 
-          onClick={() => setMessages([messages[0]])}
-          className="text-sm font-bold text-slate-400 hover:text-red-500 transition-colors"
-        >
-          Limpar Conversa
-        </button>
+    <div
+      className={`flex gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
+      style={{ animation: 'msgIn 0.25s cubic-bezier(0.34,1.56,0.64,1) both' }}
+    >
+      {/* Avatar */}
+      <div className={[
+        'w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5',
+        isUser
+          ? 'bg-slate-200 dark:bg-white/10 text-slate-600 dark:text-slate-300'
+          : 'bg-primary text-white shadow-md shadow-primary/30',
+      ].join(' ')}>
+        {isUser
+          ? <UserIcon className="w-4 h-4" />
+          : <BotIcon className="w-4 h-4" />
+        }
       </div>
 
-      <div className="flex-1 min-h-0 bg-white rounded-3xl shadow-sm border border-slate-100 flex flex-col overflow-hidden">
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 scroll-smooth">
-          {messages.map((msg) => (
-            <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[85%] md:max-w-[70%] flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-1 ${
-                  msg.role === 'assistant' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'
-                }`}>
-                  {msg.role === 'assistant' ? (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                  ) : (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                  )}
-                </div>
-                <div className={`p-4 rounded-2xl text-sm leading-relaxed shadow-sm ${
-                  msg.role === 'assistant' 
-                    ? 'bg-slate-50 text-slate-800 rounded-tl-none border border-slate-100' 
-                    : 'bg-blue-600 text-white rounded-tr-none'
-                }`}>
-                  <p className="whitespace-pre-wrap">{msg.content}</p>
-                  <div className={`text-[10px] mt-2 opacity-60 ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
-                    {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-          {isLoading && (
-            <div className="flex justify-start">
-              <div className="bg-slate-50 p-4 rounded-2xl rounded-tl-none border border-slate-100 flex items-center gap-2">
-                <div className="flex gap-1">
-                  <span className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce"></span>
-                  <span className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce delay-75"></span>
-                  <span className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce delay-150"></span>
-                </div>
-                <span className="text-xs font-bold text-slate-400">Analisando dados clínicos...</span>
-              </div>
-            </div>
-          )}
+      {/* Bubble */}
+      <div className={`group flex flex-col max-w-[78%] ${isUser ? 'items-end' : 'items-start'}`}>
+        <div className={[
+          'px-4 py-3 rounded-2xl text-sm leading-relaxed',
+          isUser
+            ? 'bg-primary text-white rounded-tr-sm shadow-md shadow-primary/20'
+            : 'bg-white dark:bg-white/5 text-slate-700 dark:text-slate-200 rounded-tl-sm border-2 border-slate-100 dark:border-white/10 shadow-sm',
+        ].join(' ')}>
+          <p className="whitespace-pre-wrap">{msg.content}</p>
         </div>
 
-        <div className="p-4 bg-slate-50/50 border-t border-slate-100">
-          <div className="flex items-center gap-2 bg-white p-2 rounded-2xl shadow-sm border border-slate-200">
-            <input 
-              type="text" 
-              placeholder="Descreva sintomas, peça cálculos de dosagem ou protocolos..."
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-              className="flex-1 bg-transparent border-none focus:ring-0 outline-none px-3 text-sm"
-              disabled={isLoading}
-            />
-            <button 
-              onClick={handleSend}
-              disabled={isLoading || !input.trim()}
-              className="p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-all shadow-md active:scale-95"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
-            </button>
-          </div>
-          <p className="text-[10px] text-center text-slate-400 mt-2 font-medium uppercase tracking-tight">
-            Ferramenta de auxílio à decisão clínica. Sempre valide informações críticas.
-          </p>
+        {/* Footer */}
+        <div className={`flex items-center gap-1.5 mt-1 px-1 ${isUser ? 'flex-row-reverse' : ''}`}>
+          <span className="text-[10px] text-slate-400 font-mono">
+            {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </span>
+          {!isUser && <CopyButton text={msg.content} />}
         </div>
       </div>
     </div>
+  );
+};
+
+/* ─────────────────────────────────────────────
+   Typing indicator
+───────────────────────────────────────────── */
+const TypingIndicator: React.FC = () => (
+  <div className="flex gap-3" style={{ animation: 'msgIn 0.2s ease both' }}>
+    <div className="w-8 h-8 rounded-xl bg-primary text-white flex items-center justify-center shrink-0 shadow-md shadow-primary/30">
+      <BotIcon className="w-4 h-4" />
+    </div>
+    <div className="bg-white dark:bg-white/5 border-2 border-slate-100 dark:border-white/10 px-4 py-3 rounded-2xl rounded-tl-sm shadow-sm flex items-center gap-2">
+      <div className="flex gap-1">
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className="w-1.5 h-1.5 bg-primary rounded-full"
+            style={{ animation: `bounce 1s ease ${i * 0.15}s infinite` }}
+          />
+        ))}
+      </div>
+      <span className="text-xs text-slate-400 font-medium">Analisando dados clínicos...</span>
+    </div>
+  </div>
+);
+
+/* ─────────────────────────────────────────────
+   Main
+───────────────────────────────────────────── */
+const INITIAL_MSG: Message = {
+  id: '0',
+  role: 'assistant',
+  content: 'Olá! Sou seu Assistente Clínico IA integrado ao MedFlow Pro.\n\nPosso ajudar com dosagens, protocolos clínicos, diagnósticos diferenciais, interações medicamentosas e muito mais. Como posso apoiar sua prática clínica hoje?',
+  timestamp: new Date(),
+};
+
+const AIChat: React.FC = () => {
+  const [messages,  setMessages]  = useState<Message[]>([INITIAL_MSG]);
+  const [input,     setInput]     = useState('');
+  const [loading,   setLoading]   = useState(false);
+  const [cleared,   setCleared]   = useState(false);
+
+  const scrollRef  = useRef<HTMLDivElement>(null);
+  const inputRef   = useRef<HTMLTextAreaElement>(null);
+
+  /* Auto-scroll */
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+  }, [messages, loading]);
+
+  /* Auto-resize textarea */
+  const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    e.target.style.height = 'auto';
+    e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+  };
+
+  /* Send */
+  const handleSend = async () => {
+    const text = input.trim();
+    if (!text || loading) return;
+
+    const userMsg: Message = { id: Date.now().toString(), role: 'user', content: text, timestamp: new Date() };
+    setMessages((prev) => [...prev, userMsg]);
+    setInput('');
+    if (inputRef.current) { inputRef.current.style.height = 'auto'; }
+    setLoading(true);
+
+    try {
+      // Build conversation history for API
+      const history = [...messages, userMsg].map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1000,
+          system: SYSTEM_PROMPT,
+          messages: history,
+        }),
+      });
+
+      const data = await res.json();
+      const reply = data?.content?.[0]?.text ?? 'Não foi possível obter resposta. Tente novamente.';
+
+      setMessages((prev) => [...prev, {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: reply,
+        timestamp: new Date(),
+      }]);
+    } catch {
+      setMessages((prev) => [...prev, {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: 'Ocorreu um erro ao conectar com o assistente. Verifique sua conexão e tente novamente.',
+        timestamp: new Date(),
+      }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+  };
+
+  const handleClear = () => {
+    setMessages([INITIAL_MSG]);
+    setCleared(true);
+    setTimeout(() => setCleared(false), 1800);
+  };
+
+  const handleSuggestion = (text: string) => {
+    setInput(text);
+    inputRef.current?.focus();
+  };
+
+  const isEmpty = messages.length === 1;
+
+  return (
+    <>
+      <style>{`
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(10px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes msgIn {
+          from { opacity: 0; transform: translateY(8px) scale(0.98); }
+          to   { opacity: 1; transform: translateY(0)   scale(1); }
+        }
+        @keyframes bounce {
+          0%, 60%, 100% { transform: translateY(0);    }
+          30%            { transform: translateY(-5px); }
+        }
+        .chat-scroll::-webkit-scrollbar { width: 4px; }
+        .chat-scroll::-webkit-scrollbar-track { background: transparent; }
+        .chat-scroll::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
+      `}</style>
+
+      <div className="h-full flex flex-col gap-4" style={{ animation: 'fadeUp 0.35s ease both' }}>
+
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-primary flex items-center justify-center shadow-md shadow-primary/30">
+              <SparklesIcon className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-bold tracking-tight text-slate-800 dark:text-white">Assistente Clínico IA</h1>
+                <span className="px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-black rounded-full uppercase tracking-widest">Beta</span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">Suporte à decisão clínica baseado em IA</p>
+            </div>
+          </div>
+
+          <button
+            onClick={handleClear}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border-2 border-slate-100 dark:border-white/10 text-xs font-semibold text-slate-400 hover:text-red-500 hover:border-red-100 dark:hover:border-red-900/30 transition-all duration-200"
+          >
+            {cleared
+              ? <><CheckIcon className="w-3.5 h-3.5 text-green-500" /> Limpo</>
+              : <><TrashIcon className="w-3.5 h-3.5" /> Limpar</>
+            }
+          </button>
+        </div>
+
+        {/* ── Chat area ── */}
+        <div className="flex-1 min-h-0 bg-white dark:bg-white/5 rounded-2xl border-2 border-slate-100 dark:border-white/10 flex flex-col overflow-hidden shadow-sm">
+
+          {/* Messages */}
+          <div ref={scrollRef} className="flex-1 overflow-y-auto chat-scroll px-5 py-5 space-y-5">
+
+            {/* Suggestions — only when empty */}
+            {isEmpty && (
+              <div style={{ animation: 'fadeUp 0.4s ease 0.1s both' }}>
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Sugestões rápidas</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {SUGGESTIONS.map((s, i) => (
+                    <button
+                      key={i}
+                      onClick={() => handleSuggestion(s.text)}
+                      className="flex items-center gap-2.5 px-4 py-3 rounded-xl border-2 border-slate-100 dark:border-white/10 bg-slate-50/60 dark:bg-white/5 text-left text-xs text-slate-600 dark:text-slate-300 font-medium hover:border-primary/30 hover:bg-primary/5 hover:text-primary transition-all duration-200 group"
+                      style={{ animation: `fadeUp 0.3s ease ${0.15 + i * 0.06}s both` }}
+                    >
+                      <span className="text-slate-400 group-hover:text-primary transition-colors shrink-0">{s.icon}</span>
+                      {s.text}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Message list */}
+            {messages.map((msg) => (
+              <Bubble key={msg.id} msg={msg} />
+            ))}
+
+            {/* Typing */}
+            {loading && <TypingIndicator />}
+          </div>
+
+          {/* ── Input area ── */}
+          <div className="shrink-0 px-4 py-3 border-t-2 border-slate-100 dark:border-white/10 bg-slate-50/40 dark:bg-white/[0.02]">
+            <div className={[
+              'flex items-end gap-3 rounded-xl border-2 px-4 py-2.5 transition-all duration-200',
+              'bg-white dark:bg-white/5',
+              input ? 'border-primary shadow-md shadow-primary/15' : 'border-slate-200 dark:border-white/15',
+            ].join(' ')}>
+              <textarea
+                ref={inputRef}
+                rows={1}
+                value={input}
+                onChange={handleInput}
+                onKeyDown={handleKeyDown}
+                disabled={loading}
+                placeholder="Descreva sintomas, peça dosagens, protocolos... (Enter para enviar)"
+                className="flex-1 text-sm bg-transparent outline-none resize-none text-slate-700 dark:text-white placeholder:text-slate-400 py-0.5 leading-relaxed max-h-[120px]"
+                style={{ height: 'auto' }}
+              />
+              <button
+                onClick={handleSend}
+                disabled={loading || !input.trim()}
+                className={[
+                  'w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-all duration-200',
+                  input.trim() && !loading
+                    ? 'bg-primary text-white shadow-md shadow-primary/30 hover:shadow-lg hover:shadow-primary/40 hover:-translate-y-0.5 active:scale-95'
+                    : 'bg-slate-100 dark:bg-white/10 text-slate-300 dark:text-slate-600 cursor-not-allowed',
+                ].join(' ')}
+              >
+                <SendIcon className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-[10px] text-center text-slate-400 mt-2 font-medium uppercase tracking-widest">
+              Ferramenta de auxílio · Valide sempre informações críticas com fontes oficiais
+            </p>
+          </div>
+        </div>
+      </div>
+    </>
   );
 };
 

@@ -30,3 +30,26 @@ export const ensureAdminUser = async () => {
     },
   });
 };
+
+const ESPECIALIDADES_SNS = [
+  'Medicina Geral',
+  'Cardiologia',
+  'Dermatologia',
+  'Ginecologia/Obstetrícia',
+  'Oftalmologia',
+  'Ortopedia',
+  'Pediatria',
+  'Psiquiatria',
+  'Radiologia',
+  'Urgência Geral',
+];
+
+export const ensureEspecialidades = async () => {
+  for (const nome of ESPECIALIDADES_SNS) {
+    await prisma.especialidade.upsert({
+      where: { nome },
+      update: {},
+      create: { nome },
+    });
+  }
+};

@@ -40,9 +40,13 @@ export const transformPatientStatus = {
   },
 };
 
+export const transformUtenteStatus = transformPatientStatus;
+
 export const transformAppointmentType = {
   toFrontend: (type: string): string => {
     const map: Record<string, string> = {
+      PRIMEIRA_CONSULTA: 'Primeira consulta',
+      SEGUIMENTO: 'Seguimento',
       CONSULTA: 'Consulta',
       RETORNO: 'Retorno',
       EXAME: 'Exame',
@@ -52,6 +56,8 @@ export const transformAppointmentType = {
   },
   toBackend: (type: string): string => {
     const map: Record<string, string> = {
+      'Primeira consulta': 'PRIMEIRA_CONSULTA',
+      'Seguimento': 'SEGUIMENTO',
       'Consulta': 'CONSULTA',
       'Retorno': 'RETORNO',
       'Exame': 'EXAME',
@@ -64,17 +70,21 @@ export const transformAppointmentType = {
 export const transformAppointmentStatus = {
   toFrontend: (status: string): string => {
     const map: Record<string, string> = {
-      AGENDADO: 'Agendado',
-      CONCLUIDO: 'Concluído',
-      CANCELADO: 'Cancelado',
+      AGENDADA: 'Agendada',
+      CONFIRMADA: 'Confirmada',
+      CANCELADA: 'Cancelada',
+      FALTA: 'Falta',
+      REALIZADA: 'Realizada',
     };
     return map[status] || status;
   },
   toBackend: (status: string): string => {
     const map: Record<string, string> = {
-      'Agendado': 'AGENDADO',
-      'Concluído': 'CONCLUIDO',
-      'Cancelado': 'CANCELADO',
+      'Agendada': 'AGENDADA',
+      'Confirmada': 'CONFIRMADA',
+      'Cancelada': 'CANCELADA',
+      'Falta': 'FALTA',
+      'Realizada': 'REALIZADA',
     };
     return map[status] || status;
   },

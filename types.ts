@@ -10,19 +10,24 @@ export interface User {
   name: string;
   role: UserRole;
   email: string;
+  phone?: string;
   avatar?: string;
+  pinActive?: boolean;
 }
 
 export interface Patient {
   id: string;
-  name: string;
-  age: number;
-  gender: 'M' | 'F' | 'Outro';
-  bloodType: string;
+  nome: string;
+  numeroUtente?: string | null;
+  numeroProvisorio?: string | null;
+  processoClinicoNum?: string | null;
+  dataNascimento?: string;
+  sexo: 'M' | 'F' | 'Outro';
+  grupoSanguineo?: string;
   status: 'Estável' | 'Crítico' | 'Em Observação' | 'Alta';
-  room?: string;
-  lastVisit: string;
-  history: MedicalRecord[];
+  quarto?: string;
+  lastVisit?: string;
+  history?: MedicalRecord[];
 }
 
 export interface MedicalRecord {
@@ -38,11 +43,13 @@ export interface Appointment {
   id: string;
   patientId: string;
   patientName: string;
+  numeroUtente?: string;
   doctorName: string;
+  especialidade?: string;
   date: string;
   time: string;
-  type: 'Consulta' | 'Retorno' | 'Exame' | 'Emergência';
-  status: 'Agendado' | 'Concluído' | 'Cancelado';
+  type: string;
+  status: string;
 }
 
 export interface ChatMessage {

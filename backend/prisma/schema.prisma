@@ -1,5 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// MedFlow Pro - Modelo para Portugal / SNS / UE
+// https://pris.ly/d/prisma-schema
 
 generator client {
   provider = "prisma-client-js"
@@ -16,14 +16,31 @@ enum UserRole {
   ADMIN
 }
 
-enum PatientStatus {
+enum UtenteStatus {
   ESTAVEL
   CRITICO
   EM_OBSERVACAO
   ALTA
 }
 
+enum TipoAtendimento {
+  CONSULTA_EXTERNA
+  URGENCIA
+  INTERNAMENTO
+  EXAME_COMPLEMENTAR
+}
+
+enum PrioridadeTriagem {
+  VERMELHO
+  LARANJA
+  AMARELO
+  VERDE
+  AZUL
+}
+
 enum AppointmentType {
+  PRIMEIRA_CONSULTA
+  SEGUIMENTO
   CONSULTA
   RETORNO
   EXAME
@@ -31,9 +48,17 @@ enum AppointmentType {
 }
 
 enum AppointmentStatus {
-  AGENDADO
-  CONCLUIDO
-  CANCELADO
+  AGENDADA
+  CONFIRMADA
+  CANCELADA
+  FALTA
+  REALIZADA
+}
+
+enum OrigemMarcacao {
+  MEDICO_FAMILIA
+  INTERNO
+  REFERENCIADO
 }
 
 model User {
@@ -41,6 +66,8 @@ model User {
   name      String
   email     String   @unique
   password  String
+  phone     String?
+  pinHash   String?
   role      UserRole @default(DOCTOR)
   avatar    String?
   createdAt DateTime @default(now())
@@ -52,38 +79,83 @@ model User {
   @@map("users")
 }
 
+model Especialidade {
+  id        String   @id @default(uuid())
+  nome      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  appointments Appointment[]
+
+  @@map("especialidades")
+}
+
 model Patient {
-  id        String        @id @default(uuid())
-  name      String
-  age       Int
-  gender    String // M, F, Outro
-  bloodType String
-  status    PatientStatus @default(ESTAVEL)
-  room      String?
-  email     String?
-  phone     String?
-  address   String?
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  id                  String           @id @default(uuid())
+  nome                String
+  numeroUtente        String?
+  numeroCc            String?
+  nif                 String?
+  dataNascimento      DateTime
+  sexo                String
+  nacionalidade       String?
+  registoProvisorio   Boolean          @default(false)
+  numeroProvisorio    String?
+  tipoDocumento       String?
+  numeroDocumento     String?
+  paisOrigem          String?
+  telemovel           String
+  telefoneAlternativo String?
+  email               String?
+  rua                 String?
+  codigoPostal        String?
+  localidade          String?
+  concelho            String?
+  distrito            String?
+  processoClinicoNum  String?
+  unidadeHospitalar   String?
+  medicoFamilia       String?
+  centroSaude         String?
+  tipoAtendimento     TipoAtendimento?
+  dataRegisto         DateTime         @default(now())
+  alergias            String?
+  doencasCronicas     String?
+  medicacaoHabitual   String?
+  grupoSanguineo      String?
+  observacoesClinicas String?
+  status              UtenteStatus     @default(ESTAVEL)
+  quarto              String?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
 
   appointments Appointment[]
   medicalRecords MedicalRecord[]
+  triagens      Triagem[]
 
+  @@unique([numeroUtente])
+  @@unique([numeroProvisorio])
+  @@index([numeroUtente])
+  @@index([numeroProvisorio])
+  @@index([processoClinicoNum])
   @@map("patients")
 }
 
 model Appointment {
-  id         String            @id @default(uuid())
-  patientId  String
-  patient    Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  doctorId   String
-  doctor     User              @relation(fields: [doctorId], references: [id])
-  date       DateTime
-  type       AppointmentType
-  status     AppointmentStatus @default(AGENDADO)
-  notes      String?
-  createdAt  DateTime          @default(now())
-  updatedAt  DateTime          @updatedAt
+  id              String            @id @default(uuid())
+  patientId       String
+  patient         Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  especialidadeId String?
+  especialidade   Especialidade?    @relation(fields: [especialidadeId], references: [id])
+  doctorId        String
+  doctor          User              @relation(fields: [doctorId], references: [id])
+  date            DateTime
+  sala            String?
+  tipo            AppointmentType
+  status          AppointmentStatus @default(AGENDADA)
+  origem          OrigemMarcacao?
+  notes           String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
 
   @@index([patientId])
   @@index([doctorId])
@@ -91,8 +163,25 @@ model Appointment {
   @@map("appointments")
 }
 
+model Triagem {
+  id               String           @id @default(uuid())
+  patientId        String
+  patient          Patient          @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  prioridade       PrioridadeTriagem
+  sinaisVitais     String?
+  dataHoraAdmissao DateTime         @default(now())
+  profissionalId   String?
+  observacoes      String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([patientId])
+  @@index([prioridade])
+  @@map("triagens")
+}
+
 model MedicalRecord {
-  id          String   @id @default(uuid())
+  id         String   @id @default(uuid())
   patientId  String
   patient    Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
   doctorId   String
@@ -100,12 +189,11 @@ model MedicalRecord {
   date       DateTime @default(now())
   diagnosis  String
   notes      String
-  medication String[] // Array de strings
+  medication String[]
   createdAt  DateTime @default(now())
-  updatedAt DateTime  @updatedAt
+  updatedAt  DateTime @updatedAt
 
   @@index([patientId])
   @@index([doctorId])
   @@map("medical_records")
 }
-

@@ -37,14 +37,14 @@ export const login = async (req: Request, res: Response) => {
 
     const token = generateToken(user.id, user.role);
 
-    const { password: _, ...userWithoutPassword } = user;
+    const { password: _, pinHash, ...userWithoutPassword } = user as any;
 
-    // Transformar role para el frontend
     res.json({
       token,
       user: {
         ...userWithoutPassword,
         role: transformUserRole.toFrontend(user.role),
+        pinActive: !!pinHash,
       },
     });
   } catch (error) {
@@ -81,14 +81,14 @@ export const register = async (req: Request, res: Response) => {
 
     const token = generateToken(user.id, user.role);
 
-    const { password: _, ...userWithoutPassword } = user;
+    const { password: _, pinHash, ...userWithoutPassword } = user as any;
 
-    // Transformar role para el frontend
     res.status(201).json({
       token,
       user: {
         ...userWithoutPassword,
         role: transformUserRole.toFrontend(user.role),
+        pinActive: !!pinHash,
       },
     });
   } catch (error) {
@@ -107,8 +107,10 @@ export const getProfile = async (req: Request, res: Response) => {
         id: true,
         name: true,
         email: true,
+        phone: true,
         role: true,
         avatar: true,
+        pinHash: true,
         createdAt: true,
       },
     });
@@ -117,11 +119,116 @@ export const getProfile = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Usuário não encontrado' });
     }
 
-    // Transformar role para el frontend
+    const { pinHash, ...rest } = user;
     res.json({
-      ...user,
+      ...rest,
       role: transformUserRole.toFrontend(user.role),
+      pinActive: !!pinHash,
     });
+  } catch (error) {
+    throw error;
+  }
+};
+
+const updateProfileSchema = z.object({
+  email: z.string().email().optional(),
+  phone: z.string().optional(),
+});
+
+const activatePinSchema = z.object({
+  pin: z.string().min(4).max(6).regex(/^\d+$/, 'PIN deve conter apenas dígitos'),
+});
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(6),
+  newPassword: z.string().min(6),
+});
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email(),
+  pin: z.string().min(4).max(6).regex(/^\d+$/, 'PIN deve conter apenas dígitos'),
+  newPassword: z.string().min(6),
+});
+
+export const updateProfile = async (req: Request, res: Response) => {
+  try {
+    const authReq = req as any;
+    const userId = authReq.userId;
+    const data = updateProfileSchema.parse(req.body);
+
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { email: data.email, phone: data.phone },
+      select: { id: true, name: true, email: true, phone: true, role: true, avatar: true, pinHash: true, createdAt: true },
+    });
+
+    const { pinHash, ...rest } = user;
+    res.json({ ...rest, role: transformUserRole.toFrontend(user.role), pinActive: !!pinHash });
+  } catch (error) {
+    throw error;
+  }
+};
+
+export const activatePin = async (req: Request, res: Response) => {
+  try {
+    const authReq = req as any;
+    const userId = authReq.userId;
+    const { pin } = activatePinSchema.parse(req.body);
+    const pinHash = await hashPassword(pin);
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { pinHash },
+    });
+
+    res.json({ success: true, message: 'PIN ativado com sucesso' });
+  } catch (error) {
+    throw error;
+  }
+};
+
+export const changePassword = async (req: Request, res: Response) => {
+  try {
+    const authReq = req as any;
+    const userId = authReq.userId;
+    const { currentPassword, newPassword } = changePasswordSchema.parse(req.body);
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
+
+    const valid = await comparePassword(currentPassword, user.password);
+    if (!valid) return res.status(400).json({ error: 'Senha atual incorreta' });
+
+    const hashedPassword = await hashPassword(newPassword);
+    await prisma.user.update({ where: { id: userId }, data: { password: hashedPassword } });
+
+    res.json({ success: true, message: 'Senha alterada com sucesso' });
+  } catch (error) {
+    throw error;
+  }
+};
+
+export const forgotPassword = async (req: Request, res: Response) => {
+  try {
+    const { email, pin, newPassword } = forgotPasswordSchema.parse(req.body);
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user || !user.pinHash) {
+      return res.status(400).json({ error: 'Email ou PIN inválido. Ative o PIN em Meu Perfil primeiro.' });
+    }
+
+    const pinValid = await comparePassword(pin, user.pinHash);
+    if (!pinValid) {
+      return res.status(400).json({ error: 'PIN incorreto.' });
+    }
+
+    const hashedPassword = await hashPassword(newPassword);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: hashedPassword },
+    });
+
+    res.json({ success: true, message: 'Senha alterada com sucesso' });
   } catch (error) {
     throw error;
   }
