@@ -204,9 +204,13 @@ const StepHeader: React.FC<{ step: number }> = ({ step }) => {
   );
 };
 
-/* Section title inside card */
-const SectionLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">{children}</p>
+const SectionHeader: React.FC<{ icon: React.ReactNode; children: React.ReactNode }> = ({ icon, children }) => (
+  <div className="flex items-center gap-2 mb-3">
+    <span className="text-primary">{icon}</span>
+    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground leading-none">
+      {children}
+    </p>
+  </div>
 );
 
 /* Field label */
@@ -216,13 +220,20 @@ const FL: React.FC<{ htmlFor?: string; required?: boolean; children: React.React
   </Label>
 );
 
-/* Date helpers */
+const FLIcon: React.FC<{ htmlFor?: string; required?: boolean; icon: React.ReactNode; children: React.ReactNode }> = ({ htmlFor, required, icon, children }) => (
+  <Label htmlFor={htmlFor} className="text-xs font-semibold text-muted-foreground mb-1.5 flex items-center gap-1.5">
+    <span className="text-muted-foreground">{icon}</span>
+    <span>{children}</span>
+    {required && <span className="text-destructive ml-0.5">*</span>}
+  </Label>
+);
+
 const DAYS   = Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0'));
 const MONTHS = [
-  { v:'01', l:'Janeiro' }, { v:'02', l:'Fevereiro' }, { v:'03', l:'Março'    },
-  { v:'04', l:'Abril'   }, { v:'05', l:'Maio'       }, { v:'06', l:'Junho'   },
-  { v:'07', l:'Julho'   }, { v:'08', l:'Agosto'     }, { v:'09', l:'Setembro'},
-  { v:'10', l:'Outubro' }, { v:'11', l:'Novembro'   }, { v:'12', l:'Dezembro'},
+  { v: '01', l: 'Janeiro' }, { v: '02', l: 'Fevereiro' }, { v: '03', l: 'Março' },
+  { v: '04', l: 'Abril' },   { v: '05', l: 'Maio' },      { v: '06', l: 'Junho' },
+  { v: '07', l: 'Julho' },   { v: '08', l: 'Agosto' },    { v: '09', l: 'Setembro' },
+  { v: '10', l: 'Outubro' }, { v: '11', l: 'Novembro' },  { v: '12', l: 'Dezembro' },
 ];
 const currentYear = new Date().getFullYear();
 const YEARS = Array.from({ length: currentYear - 1919 }, (_, i) => String(currentYear - i));
@@ -336,7 +347,7 @@ const NovoPacienteModal: React.FC<{
               {/* Card: Dados pessoais */}
               <Card className="border-2">
                 <CardContent className="pt-4 pb-4">
-                  <SectionLabel>Dados pessoais</SectionLabel>
+                  <SectionHeader icon={<UserIcon className="w-3.5 h-3.5" />}>Dados pessoais</SectionHeader>
                   <div className="grid grid-cols-2 gap-3">
                     {/* Nome */}
                     <div className="col-span-2">
@@ -435,7 +446,7 @@ const NovoPacienteModal: React.FC<{
               {/* Card: Documento */}
               <Card className="border-2">
                 <CardContent className="pt-4 pb-4">
-                  <SectionLabel>Documento de identificação</SectionLabel>
+                  <SectionHeader icon={<FileTextIcon className="w-3.5 h-3.5" />}>Documento de identificação</SectionHeader>
                   <div className="grid grid-cols-3 gap-3">
                     <div>
                       <FL>Tipo</FL>
@@ -468,10 +479,7 @@ const NovoPacienteModal: React.FC<{
               {/* Card: Morada */}
               <Card className="border-2">
                 <CardContent className="pt-4 pb-4">
-                  <div className="flex items-center gap-1.5 mb-3">
-                    <MapPinIcon className="w-3.5 h-3.5 text-primary" />
-                    <SectionLabel>Morada</SectionLabel>
-                  </div>
+                  <SectionHeader icon={<MapPinIcon className="w-3.5 h-3.5" />}>Morada</SectionHeader>
                   <div className="grid grid-cols-3 gap-3">
                     <div className="col-span-3">
                       <FL htmlFor="p-rua">Rua / Endereço</FL>
@@ -498,7 +506,7 @@ const NovoPacienteModal: React.FC<{
               {/* Card: Contato */}
               <Card className="border-2">
                 <CardContent className="pt-4 pb-4">
-                  <SectionLabel>Contato</SectionLabel>
+                  <SectionHeader icon={<PhoneIcon className="w-3.5 h-3.5" />}>Contato</SectionHeader>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <FL htmlFor="p-tel" required>Telefone</FL>
@@ -519,10 +527,9 @@ const NovoPacienteModal: React.FC<{
                   <Separator className="my-3" />
 
                   {/* Contacto de emergência */}
-                  <div className="flex items-center gap-1.5 mb-3">
-                    <ShieldIcon className="w-3.5 h-3.5 text-amber-500" />
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Contato de emergência</p>
-                  </div>
+                  <SectionHeader icon={<ShieldIcon className="w-3.5 h-3.5 text-amber-500" />}>
+                    Contato de emergência
+                  </SectionHeader>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <FL htmlFor="p-emnom">Nome do familiar</FL>
@@ -548,9 +555,9 @@ const NovoPacienteModal: React.FC<{
               {/* Card: Dados biográficos */}
               <Card className="border-2">
                 <CardContent className="pt-4 pb-4">
-                  <SectionLabel>Dados biográficos</SectionLabel>
+                  <SectionHeader icon={<CalendarIcon className="w-3.5 h-3.5" />}>Dados biográficos</SectionHeader>
                   <div className="flex items-end gap-6">
-                    {/* Data de nascimento — label + 3 selects juntos */}
+                    {/* Data de nascimento — Dia, Mês, Ano */}
                     <div className="flex-1">
                       <FL>Data de nascimento</FL>
                       <div className="flex gap-1.5">
@@ -561,7 +568,7 @@ const NovoPacienteModal: React.FC<{
                           </SelectContent>
                         </Select>
                         <Select value={form.mesNasc} onValueChange={v => set('mesNasc', v)}>
-                          <SelectTrigger className="w-32"><SelectValue placeholder="Mês" /></SelectTrigger>
+                          <SelectTrigger className="w-28"><SelectValue placeholder="Mês" /></SelectTrigger>
                           <SelectContent className="max-h-48">
                             {MONTHS.map(m => <SelectItem key={m.v} value={m.v}>{m.l}</SelectItem>)}
                           </SelectContent>
@@ -574,9 +581,9 @@ const NovoPacienteModal: React.FC<{
                         </Select>
                       </div>
                     </div>
-                    {/* Grupo sanguíneo — separado */}
+                    {/* Grupo sanguíneo */}
                     <div className="w-36">
-                      <FL>Grupo sanguíneo</FL>
+                      <FLIcon icon={<DropletIcon className="w-3.5 h-3.5 text-red-400" />}>Grupo sanguíneo</FLIcon>
                       <Select value={form.grupoSanguineo} onValueChange={v => set('grupoSanguineo', v)}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
@@ -597,7 +604,7 @@ const NovoPacienteModal: React.FC<{
               {/* Card: Dados clínicos */}
               <Card className="border-2">
                 <CardContent className="pt-4 pb-4">
-                  <SectionLabel>Atribuição clínica</SectionLabel>
+                  <SectionHeader icon={<HeartPulseIcon className="w-3.5 h-3.5" />}>Atribuição clínica</SectionHeader>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <FL>Especialidade</FL>

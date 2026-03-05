@@ -213,10 +213,13 @@ class ApiClient {
   }
 
   // AI Chat
-  async sendChatMessage(message: string) {
+  async sendChatMessage(
+    message: string,
+    history?: { role: string; content: string }[]
+  ) {
     return this.request<{ response: string }>('/ai/chat', {
       method: 'POST',
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, history: history || [] }),
     });
   }
 }

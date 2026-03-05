@@ -1,10 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
-  ChevronLeftIcon, ChevronRightIcon, PlusIcon,
+  ChevronLeftIcon, ChevronRightIcon, PlusIcon, ChevronDownIcon,
   UserIcon, ClockIcon, BuildingIcon, CalendarIcon,
-  CheckCheckIcon, PlayIcon, AlertCircleIcon, XCircleIcon,
+  CheckCheckIcon, PlayIcon, XCircleIcon, CreditCardIcon, FileTextIcon,
+  ShieldCheckIcon, BanknoteIcon,
 } from 'lucide-react';
-import { format, addDays, subDays, isToday, isTomorrow, isYesterday } from 'date-fns';
+import { format, addDays, subDays, isToday, isTomorrow, isYesterday, startOfDay, isBefore, parse } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +16,25 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from '@/components/ui/dialog';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
+import { Card, CardContent } from '@/components/ui/card';
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from '@/components/ui/input-group';
 
 /* ─────────────────────────────────────────────
    Mock data
@@ -87,6 +106,13 @@ const SALAS = [
   { name: 'Bloco Cir', status: 'Reservado'},
   { name: 'Urgência',  status: 'Livre'    },
 ];
+
+const ESPECIALIDADES = ['Cardiologia', 'Pediatria', 'Neurologia', 'Ortopedia', 'Dermatologia', 'Clínica Geral', 'Ginecologia', 'Psiquiatria'];
+const MEDICOS = ['Dr. Ramos', 'Dra. Silva', 'Dr. Costa', 'Dra. Matos', 'Dr. Nunes', 'Dra. Lima'];
+const TIPOS: Appointment['type'][] = ['Consulta', 'Exame', 'Retorno', 'Emergência', 'Cirurgia'];
+const DURATIONS = [15, 20, 30, 45, 60, 90, 120];
+const SALAS_NAMES = SALAS.map((s) => s.name);
+const PACIENTES = [...new Set(Object.values(MOCK).flat().map((a) => a.patientName))].sort();
 
 /* ─────────────────────────────────────────────
    Date label helper
@@ -171,15 +197,554 @@ const AppCard: React.FC<{ app: Appointment; idx: number }> = ({ app, idx }) => {
 };
 
 /* ─────────────────────────────────────────────
+   Nova Consulta Modal — helpers
+───────────────────────────────────────────── */
+const SectionHeader: React.FC<{ icon: React.ReactNode; children: React.ReactNode }> = ({ icon, children }) => (
+  <div className="flex items-center gap-2 mb-3">
+    <span className="text-primary">{icon}</span>
+    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground leading-none">
+      {children}
+    </p>
+  </div>
+);
+
+const formatDatePT = (date: Date | undefined) => {
+  if (!date) return '';
+  return format(date, "d 'de' MMMM 'de' yyyy", { locale: pt });
+};
+
+const isValidDate = (date: Date | undefined) => {
+  if (!date) return false;
+  return !isNaN(date.getTime());
+};
+
+const todayStart = () => startOfDay(new Date());
+
+type PaymentType = 'seguro' | 'cartao' | 'dinheiro' | 'isento';
+
+interface NovaConsultaForm {
+  patientName: string;
+  especialidade: string;
+  doctorName: string;
+  type: Appointment['type'];
+  dateStr: string;
+  time: string;
+  sala: string;
+  duration: number;
+  status: Appointment['status'];
+  paymentType: PaymentType;
+  /* Seguro */
+  seguradora: string;
+  numeroCartaoSeguro: string;
+  numeroApolice: string;
+  validadeCartaoSeguro: string;
+  /* Cartão */
+  numeroCartao: string;
+  nomeCartao: string;
+  validadeCartao: string;
+  cvv: string;
+  /* Dinheiro */
+  valorConsulta: string;
+  montanteRecebido: string;
+  observacoes: string;
+}
+
+const SEGURADORAS = ['ADSE', 'Multicare', 'Médis', 'AdvanceCare', 'Allianz', 'AXA', 'Generali', 'Outra'];
+const TARIFA_CONSULTA = 50; // valor exemplo €
+
+const FORM_EMPTY: NovaConsultaForm = {
+  patientName: '',
+  especialidade: 'Clínica Geral',
+  doctorName: 'Dr. Nunes',
+  type: 'Consulta',
+  dateStr: format(new Date(), 'yyyy-MM-dd'),
+  time: '09:00',
+  sala: 'Cons. 01',
+  duration: 30,
+  status: 'Agendado',
+  paymentType: 'seguro',
+  seguradora: '',
+  numeroCartaoSeguro: '',
+  numeroApolice: '',
+  validadeCartaoSeguro: '',
+  numeroCartao: '',
+  nomeCartao: '',
+  validadeCartao: '',
+  cvv: '',
+  valorConsulta: String(TARIFA_CONSULTA),
+  montanteRecebido: '',
+  observacoes: '',
+};
+
+const NovaConsultaModal: React.FC<{
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onSave: (app: Appointment, dateStr: string) => void;
+  initialDate?: Date;
+  occupiedDateStrings?: string[];
+}> = ({ open, onOpenChange, onSave, initialDate, occupiedDateStrings = [] }) => {
+  const initialDateStr = initialDate ? format(initialDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd');
+  const [form, setForm] = useState<NovaConsultaForm>(() => ({
+    ...FORM_EMPTY,
+    dateStr: initialDateStr,
+  }));
+  const [dateOpen, setDateOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState<Date>(() =>
+    initialDate ? new Date(initialDate) : new Date()
+  );
+
+  useEffect(() => {
+    if (open && form.dateStr) {
+      setCalendarMonth(new Date(form.dateStr + 'T12:00:00'));
+    }
+  }, [open, form.dateStr]);
+
+  const set = <K extends keyof NovaConsultaForm>(k: K, v: NovaConsultaForm[K]) => {
+    setForm((f) => ({ ...f, [k]: v }));
+  };
+
+  const selectedDate = form.dateStr ? new Date(form.dateStr + 'T12:00:00') : undefined;
+  const dateDisplayValue = formatDatePT(selectedDate);
+  const occupiedDates = useMemo(
+    () => occupiedDateStrings.map((s) => new Date(s + 'T12:00:00')),
+    [occupiedDateStrings]
+  );
+
+  const handleSave = () => {
+    setSaving(true);
+    const patientInitial = form.patientName ? form.patientName.charAt(0) : '?';
+    const newApp: Appointment = {
+      id: Date.now().toString(),
+      time: form.time,
+      patientName: form.patientName || 'Paciente a definir',
+      patientInitial,
+      doctorName: form.doctorName,
+      especialidade: form.especialidade,
+      type: form.type,
+      status: form.status,
+      sala: form.sala,
+      duration: form.duration,
+    };
+    onSave(newApp, form.dateStr);
+    setSaving(false);
+    onOpenChange(false);
+    setForm({ ...FORM_EMPTY, dateStr: format(new Date(), 'yyyy-MM-dd') });
+  };
+
+  const handleClose = () => {
+    onOpenChange(false);
+    setForm({ ...FORM_EMPTY, dateStr: format(new Date(), 'yyyy-MM-dd') });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
+      <DialogContent className="sm:max-w-xl max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden">
+        <DialogHeader className="px-6 pt-5 pb-4 border-b shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shadow-md shadow-primary/25 shrink-0">
+              <CalendarIcon className="w-5 h-5 text-primary-foreground" />
+            </div>
+            <div>
+              <DialogTitle className="text-base font-bold leading-tight">Nova Consulta</DialogTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">Agendar consulta, exame ou cirurgia</p>
+            </div>
+          </div>
+        </DialogHeader>
+
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5 space-y-4">
+          {/* ═══ Secção: Atendimento ═══ */}
+          <Card className="border-2">
+            <CardContent className="pt-4 pb-4">
+              <SectionHeader icon={<UserIcon className="w-3.5 h-3.5" />}>Atendimento</SectionHeader>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <FieldLabel htmlFor="consulta-paciente">Paciente *</FieldLabel>
+                  <Select value={form.patientName || '__none__'} onValueChange={(v) => set('patientName', v === '__none__' ? '' : v)}>
+                    <SelectTrigger id="consulta-paciente" className="w-full">
+                      <SelectValue placeholder="Selecionar paciente" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">— Selecionar —</SelectItem>
+                      {PACIENTES.map((p) => (
+                        <SelectItem key={p} value={p}>{p}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <FieldLabel htmlFor="consulta-especialidade">Especialidade *</FieldLabel>
+                  <Select value={form.especialidade} onValueChange={(v) => set('especialidade', v)}>
+                    <SelectTrigger id="consulta-especialidade" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ESPECIALIDADES.map((e) => (
+                        <SelectItem key={e} value={e}>{e}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <FieldLabel htmlFor="consulta-medico">Médico responsável *</FieldLabel>
+                  <Select value={form.doctorName} onValueChange={(v) => set('doctorName', v)}>
+                    <SelectTrigger id="consulta-medico" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MEDICOS.map((m) => (
+                        <SelectItem key={m} value={m}>{m}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <FieldLabel htmlFor="consulta-tipo">Tipo de atendimento *</FieldLabel>
+                  <Select value={form.type} onValueChange={(v) => set('type', v as Appointment['type'])}>
+                    <SelectTrigger id="consulta-tipo" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TIPOS.map((t) => (
+                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* ═══ Secção: Data e Hora ═══ */}
+          <Card className="border-2">
+            <CardContent className="pt-4 pb-4">
+              <SectionHeader icon={<ClockIcon className="w-3.5 h-3.5" />}>Data e Hora</SectionHeader>
+              <FieldGroup className="flex-row flex-wrap gap-4">
+                <Field className="flex-1 min-w-[200px]">
+                  <FieldLabel htmlFor="consulta-data-input">Data *</FieldLabel>
+                  <InputGroup>
+                    <InputGroupInput
+                      id="consulta-data-input"
+                      value={dateDisplayValue}
+                      placeholder="Ex: 22 de Fevereiro de 2026"
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (!val.trim()) return;
+                        try {
+                          const parsed = parse(val, "d 'de' MMMM 'de' yyyy", new Date(), { locale: pt });
+                          if (isValidDate(parsed) && !isBefore(parsed, todayStart())) {
+                            set('dateStr', format(parsed, 'yyyy-MM-dd'));
+                            setCalendarMonth(parsed);
+                          }
+                        } catch {
+                          /* formato inválido */
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          setDateOpen(true);
+                        }
+                      }}
+                    />
+                    <InputGroupAddon align="inline-end">
+                      <Popover open={dateOpen} onOpenChange={setDateOpen}>
+                        <PopoverTrigger asChild>
+                          <InputGroupButton variant="ghost" size="icon-xs" aria-label="Selecionar data">
+                            <CalendarIcon className="w-4 h-4" />
+                          </InputGroupButton>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto overflow-hidden p-0" align="end" alignOffset={-8} sideOffset={10}>
+                          <Calendar
+                            mode="single"
+                            selected={selectedDate}
+                            month={calendarMonth}
+                            onMonthChange={setCalendarMonth}
+                            locale={pt}
+                            disabled={{ before: todayStart() }}
+                            modifiers={occupiedDates.length > 0 ? { ocupado: occupiedDates } : undefined}
+                            modifiersClassNames={occupiedDates.length > 0 ? { ocupado: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 font-semibold' } : undefined}
+                            onSelect={(date) => {
+                              if (date) {
+                                set('dateStr', format(date, 'yyyy-MM-dd'));
+                                setDateOpen(false);
+                              }
+                            }}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </InputGroupAddon>
+                  </InputGroup>
+                </Field>
+                <Field className="w-32">
+                  <FieldLabel htmlFor="consulta-hora">Hora *</FieldLabel>
+                  <Input
+                    id="consulta-hora"
+                    type="time"
+                    step="60"
+                    value={form.time}
+                    onChange={(e) => set('time', e.target.value)}
+                    className="h-9 appearance-none bg-background [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+                  />
+                </Field>
+              </FieldGroup>
+            </CardContent>
+          </Card>
+
+          {/* ═══ Secção: Local ═══ */}
+          <Card className="border-2">
+            <CardContent className="pt-4 pb-4">
+              <SectionHeader icon={<BuildingIcon className="w-3.5 h-3.5" />}>Local e duração</SectionHeader>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <FieldLabel htmlFor="consulta-sala">Sala *</FieldLabel>
+                  <Select value={form.sala} onValueChange={(v) => set('sala', v)}>
+                    <SelectTrigger id="consulta-sala" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SALAS_NAMES.map((s) => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <FieldLabel htmlFor="consulta-duracao">Duração (min) *</FieldLabel>
+                  <Select value={String(form.duration)} onValueChange={(v) => set('duration', Number(v))}>
+                    <SelectTrigger id="consulta-duracao" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DURATIONS.map((d) => (
+                        <SelectItem key={d} value={String(d)}>{d} min</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* ═══ Secção: Pagamento ═══ */}
+          <Card className="border-2">
+            <CardContent className="pt-4 pb-4">
+              <SectionHeader icon={<CreditCardIcon className="w-3.5 h-3.5" />}>Pagamento</SectionHeader>
+
+              <div className="space-y-2 mb-4">
+                <FieldLabel>Método de pagamento</FieldLabel>
+                <div className="flex flex-wrap gap-2">
+                  {(['seguro', 'cartao', 'dinheiro', 'isento'] as const).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => set('paymentType', v)}
+                      className={[
+                        'px-3 py-2 rounded-lg text-xs font-semibold border-2 transition-all',
+                        form.paymentType === v
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border bg-muted/30 text-muted-foreground hover:border-muted-foreground/50',
+                      ].join(' ')}
+                    >
+                      {v === 'seguro' && <><ShieldCheckIcon className="w-3.5 h-3.5 inline mr-1.5" />Seguro</>}
+                      {v === 'cartao' && <><CreditCardIcon className="w-3.5 h-3.5 inline mr-1.5" />Cartão</>}
+                      {v === 'dinheiro' && <><BanknoteIcon className="w-3.5 h-3.5 inline mr-1.5" />Dinheiro</>}
+                      {v === 'isento' && 'Isento'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Seguro médico */}
+              {form.paymentType === 'seguro' && (
+                <div className="space-y-4 pt-2 border-t">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <FieldLabel htmlFor="p-seguradora">Seguradora *</FieldLabel>
+                      <Select value={form.seguradora || '__none__'} onValueChange={(v) => set('seguradora', v === '__none__' ? '' : v)}>
+                        <SelectTrigger id="p-seguradora" className="w-full">
+                          <SelectValue placeholder="Selecionar seguradora" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">— Selecionar —</SelectItem>
+                          {SEGURADORAS.map((s) => (
+                            <SelectItem key={s} value={s}>{s}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <FieldLabel htmlFor="p-num-cartao-seguro">Nº cartão de seguro *</FieldLabel>
+                      <Input
+                        id="p-num-cartao-seguro"
+                        value={form.numeroCartaoSeguro}
+                        onChange={(e) => set('numeroCartaoSeguro', e.target.value)}
+                        placeholder="Ex: 123456789012"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <FieldLabel htmlFor="p-apolice">Nº apólice</FieldLabel>
+                      <Input
+                        id="p-apolice"
+                        value={form.numeroApolice}
+                        onChange={(e) => set('numeroApolice', e.target.value)}
+                        placeholder="Opcional"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <FieldLabel htmlFor="p-validade-seguro">Validade cartão</FieldLabel>
+                      <Input
+                        id="p-validade-seguro"
+                        type="month"
+                        value={form.validadeCartaoSeguro}
+                        onChange={(e) => set('validadeCartaoSeguro', e.target.value)}
+                        placeholder="MM/AAAA"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Pagamento por cartão */}
+              {form.paymentType === 'cartao' && (
+                <div className="space-y-4 pt-2 border-t">
+                  <div className="space-y-2">
+                    <FieldLabel htmlFor="p-num-cartao">Número do cartão *</FieldLabel>
+                    <Input
+                      id="p-num-cartao"
+                      value={form.numeroCartao}
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/\D/g, '').slice(0, 16);
+                        set('numeroCartao', v.replace(/(.{4})/g, '$1 ').trim());
+                      }}
+                      placeholder="0000 0000 0000 0000"
+                      maxLength={19}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <FieldLabel htmlFor="p-nome-cartao">Nome no cartão *</FieldLabel>
+                    <Input
+                      id="p-nome-cartao"
+                      value={form.nomeCartao}
+                      onChange={(e) => set('nomeCartao', e.target.value.toUpperCase())}
+                      placeholder="Como impresso no cartão"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <FieldLabel htmlFor="p-validade-cartao">Validade (MM/AA) *</FieldLabel>
+                      <Input
+                        id="p-validade-cartao"
+                        value={form.validadeCartao}
+                        onChange={(e) => {
+                          let v = e.target.value.replace(/\D/g, '').slice(0, 4);
+                          if (v.length >= 2) v = v.slice(0, 2) + '/' + v.slice(2);
+                          set('validadeCartao', v);
+                        }}
+                        placeholder="MM/AA"
+                        maxLength={5}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <FieldLabel htmlFor="p-cvv">CVV *</FieldLabel>
+                      <Input
+                        id="p-cvv"
+                        type="password"
+                        value={form.cvv}
+                        onChange={(e) => set('cvv', e.target.value.replace(/\D/g, '').slice(0, 4))}
+                        placeholder="123"
+                        maxLength={4}
+                      />
+                      <p className="text-[10px] text-muted-foreground">3 ou 4 dígitos no verso</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Pagamento em dinheiro */}
+              {form.paymentType === 'dinheiro' && (
+                <div className="space-y-4 pt-2 border-t">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <FieldLabel htmlFor="p-valor-consulta">Valor da consulta (€) *</FieldLabel>
+                      <Input
+                        id="p-valor-consulta"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={form.valorConsulta}
+                        onChange={(e) => set('valorConsulta', e.target.value)}
+                        placeholder="0,00"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <FieldLabel htmlFor="p-montante">Montante recebido (€) *</FieldLabel>
+                      <Input
+                        id="p-montante"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={form.montanteRecebido}
+                        onChange={(e) => set('montanteRecebido', e.target.value)}
+                        placeholder="0,00"
+                      />
+                    </div>
+                  </div>
+                  {form.valorConsulta && form.montanteRecebido && (
+                    <div className="flex items-center gap-2 py-2 px-3 rounded-lg bg-muted/50">
+                      <BanknoteIcon className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-sm font-semibold">
+                        Troco: {Math.max(0, (parseFloat(form.montanteRecebido) || 0) - (parseFloat(form.valorConsulta) || 0)).toFixed(2)} €
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {form.paymentType === 'isento' && (
+                <p className="text-sm text-muted-foreground pt-2">Consulta isenta de pagamento.</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* ═══ Secção: Observações ═══ */}
+          <Card className="border-2">
+            <CardContent className="pt-4 pb-4">
+              <SectionHeader icon={<FileTextIcon className="w-3.5 h-3.5" />}>Observações</SectionHeader>
+              <Textarea
+                id="consulta-obs"
+                rows={3}
+                value={form.observacoes}
+                onChange={(e) => set('observacoes', e.target.value)}
+                placeholder="Notas adicionais..."
+                className="resize-none"
+              />
+            </CardContent>
+          </Card>
+        </div>
+
+        <DialogFooter className="px-6 py-4 border-t shrink-0 bg-muted/10">
+          <Button variant="outline" onClick={handleClose}>Cancelar</Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? 'A guardar...' : 'Guardar consulta'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+/* ─────────────────────────────────────────────
    Main
 ───────────────────────────────────────────── */
 const Appointments: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showNovaConsulta, setShowNovaConsulta] = useState(false);
+  const [apps, setApps] = useState<Record<string, Appointment[]>>(MOCK);
 
   const dateStr    = fmt(selectedDate);
   const label      = dateLabel(selectedDate);
-  const dayApps    = MOCK[dateStr] ?? [];
+  const dayApps    = apps[dateStr] ?? [];
 
   const stats = useMemo(() => ({
     total:     dayApps.length,
@@ -188,45 +753,22 @@ const Appointments: React.FC = () => {
     pendente:  dayApps.filter((a) => a.status === 'Agendado').length,
   }), [dayApps]);
 
+  const handleSaveConsulta = (app: Appointment, dateStr: string) => {
+    setApps((prev) => {
+      const list = prev[dateStr] ?? [];
+      return { ...prev, [dateStr]: [app, ...list] };
+    });
+  };
+
   return (
     <>
-      <Dialog open={showNovaConsulta} onOpenChange={(open) => setShowNovaConsulta(open)}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Nova Consulta</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="consulta-paciente">Paciente *</Label>
-                <Input id="consulta-paciente" placeholder="Nome do paciente" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="consulta-especialidade">Especialidade *</Label>
-                <Input id="consulta-especialidade" placeholder="Especialidade" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="consulta-data">Data *</Label>
-                <Input id="consulta-data" type="date" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="consulta-hora">Hora *</Label>
-                <Input id="consulta-hora" type="time" />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="consulta-notas">Observações</Label>
-              <Textarea id="consulta-notas" rows={3} placeholder="Notas adicionais" className="resize-none" />
-            </div>
-            <div className="flex gap-2 justify-end pt-2">
-              <Button variant="outline" onClick={() => setShowNovaConsulta(false)}>Cancelar</Button>
-              <Button onClick={() => setShowNovaConsulta(false)}>Guardar</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <NovaConsultaModal
+        open={showNovaConsulta}
+        onOpenChange={setShowNovaConsulta}
+        onSave={handleSaveConsulta}
+        initialDate={selectedDate}
+        occupiedDateStrings={Object.keys(apps)}
+      />
 
       <style>{`
         @keyframes fadeUp {

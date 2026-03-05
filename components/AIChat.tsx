@@ -4,6 +4,7 @@ import {
   SparklesIcon, ClipboardIcon, CheckIcon,
   StethoscopeIcon, PillIcon, FileTextIcon, ActivityIcon,
 } from 'lucide-react';
+import { api } from '../services/api';
 
 /* ─────────────────────────────────────────────
    Types
@@ -184,37 +185,21 @@ const AIChat: React.FC = () => {
     setLoading(true);
 
     try {
-      // Build conversation history for API
-      const history = [...messages, userMsg].map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
-
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          system: SYSTEM_PROMPT,
-          messages: history,
-        }),
-      });
-
-      const data = await res.json();
-      const reply = data?.content?.[0]?.text ?? 'Não foi possível obter resposta. Tente novamente.';
+      const history = messages.map((m) => ({ role: m.role, content: m.content }));
+      const { response: reply } = await api.sendChatMessage(text, history);
 
       setMessages((prev) => [...prev, {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: reply,
+        content: reply || 'Não foi possível obter resposta. Tente novamente.',
         timestamp: new Date(),
       }]);
-    } catch {
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Ocorreu um erro ao conectar com o assistente. Verifique sua conexão e tente novamente.';
       setMessages((prev) => [...prev, {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'Ocorreu um erro ao conectar com o assistente. Verifique sua conexão e tente novamente.',
+        content: msg,
         timestamp: new Date(),
       }]);
     } finally {

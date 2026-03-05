@@ -7,7 +7,7 @@ import {
 import {
   UsersIcon, CalendarCheckIcon, BedIcon, ScissorsIcon,
   TrendingUpIcon, TrendingDownIcon, MinusIcon,
-  DownloadIcon, PlusIcon, ActivityIcon, RefreshCwIcon,
+  DownloadIcon, ActivityIcon, RefreshCwIcon,
   ArrowRightIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -170,7 +170,7 @@ const Dashboard: React.FC = () => {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 sm:ml-auto">
             <button
               onClick={handleRefresh}
               className="w-9 h-9 rounded-xl border-2 border-slate-100 dark:border-white/10 bg-white dark:bg-white/5 flex items-center justify-center text-slate-400 hover:text-primary hover:border-primary/30 transition-all duration-200"
@@ -180,12 +180,6 @@ const Dashboard: React.FC = () => {
             <button className="flex items-center gap-2 h-9 px-4 rounded-xl border-2 border-slate-100 dark:border-white/10 bg-white dark:bg-white/5 text-sm font-medium text-slate-600 dark:text-slate-300 hover:border-slate-200 dark:hover:border-white/20 transition-all duration-200">
               <DownloadIcon className="w-3.5 h-3.5" />
               Exportar
-            </button>
-            <button
-              className="flex items-center gap-2 h-9 px-4 rounded-xl bg-primary text-white text-sm font-semibold shadow-md shadow-primary/25 hover:shadow-lg hover:shadow-primary/30 hover:-translate-y-0.5 transition-all duration-200"
-            >
-              <PlusIcon className="w-4 h-4" />
-              Novo Registro
             </button>
           </div>
         </div>
