@@ -1,5 +1,5 @@
 <div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+<img width="1200" alt="MedFlow Pro" src="public/images/Medflow_capa.png" />
 </div>
 
 # MedFlow Pro - Sistema de Gestão Hospitalar
@@ -46,6 +46,16 @@ Sistema completo de gestão hospitalar com assistente de IA integrado.
    JWT_SECRET="seu_jwt_secret_aqui"
    AI_API_KEY="sua_chave_api_aqui"
    ```
+
+   Recuperação de senha por email (opcional, recomendado em produção):
+   ```
+   SMTP_HOST="smtp.seuprovedor.com"
+   SMTP_PORT="587"
+   SMTP_USER="usuario"
+   SMTP_PASS="senha"
+   SMTP_FROM="MedFlow Pro <noreply@seudominio.com>"
+   ```
+   Em desenvolvimento, sem SMTP, o código de verificação aparece no **terminal do servidor** ao pedir “Enviar código”.
 
 3. Execute as migrações:
    ```bash
