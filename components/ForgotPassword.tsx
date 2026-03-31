@@ -54,7 +54,7 @@ const ForgotPassword: React.FC<ForgotPasswordProps> = ({ onBack, onSuccess }) =>
     }
     setLoading(true);
     try {
-      await api.forgotPassword(email, pin, newPassword);
+      await api.forgotPasswordWithProfilePin(email, pin, newPassword);
       setSuccess(true);
       setTimeout(() => {
         onSuccess?.();

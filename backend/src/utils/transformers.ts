@@ -6,6 +6,7 @@ export const transformUserRole = {
       DOCTOR: 'Médico(a)',
       NURSE: 'Enfermeiro(a)',
       ADMIN: 'Administrador',
+      PATIENT: 'Paciente',
     };
     return map[role] || role;
   },
@@ -14,6 +15,7 @@ export const transformUserRole = {
       'Médico(a)': 'DOCTOR',
       'Enfermeiro(a)': 'NURSE',
       'Administrador': 'ADMIN',
+      'Paciente': 'PATIENT',
     };
     return map[role] || role;
   },

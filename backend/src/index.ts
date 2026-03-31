@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import env from './config/env.js';
 import { errorHandler } from './middleware/errorHandler.js';
-import { ensureAdminUser, ensureEspecialidades } from './utils/seedAdmin.js';
+import { ensureAdminUser, ensureEspecialidades, ensureTestPatient } from './utils/seedAdmin.js';
 
 // Routes
 import authRoutes from './routes/authRoutes.js';
@@ -42,6 +42,7 @@ const startServer = async () => {
   try {
     await ensureAdminUser();
     await ensureEspecialidades();
+    await ensureTestPatient();
   } catch (error) {
     console.error('Erro ao iniciar seeds:', error);
   }

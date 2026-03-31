@@ -4,6 +4,9 @@ import { User, UserRole } from './types';
 import { api } from './services/api';
 import Login from './components/Login';
 import Sidebar from './components/Sidebar';
+import { PatientNav, PatientFooter, PatientDashboard, PatientPharmacy, PatientContact } from './components/patient';
+import PatientChatOrAuth from './components/patient/PatientChatOrAuth';
+import PatientFloatingChat from './components/patient/PatientFloatingChat';
 import AdminSidebar, { AdminTab } from './components/AdminSidebar';
 import Dashboard from './components/Dashboard';
 import PatientList from './components/PatientList';
@@ -19,15 +22,20 @@ import MyProfile from './components/MyProfile';
 import UserSettings from './components/UserSettings';
 
 const isAdmin = (user: User) => user.role === UserRole.ADMIN || user.role === 'Administrador';
+const isPatient = (user: User) => user.role === UserRole.PATIENT || user.role === 'Paciente';
 
 type MainTab = 'dashboard' | 'patients' | 'appointments' | 'chat' | 'profile' | 'settings';
+type PatientTab = 'home' | 'farmacia';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<MainTab>('dashboard');
   const [adminTab, setAdminTab] = useState<AdminTab>('admin-dashboard');
-  
+  const [patientTab, setPatientTab] = useState<PatientTab>('home');
+  const [showPatientPortal, setShowPatientPortal] = useState(false);
+  const [openFloatingChat, setOpenFloatingChat] = useState(false);
+
   // Verificar se há token e carregar usuário
   useEffect(() => {
     const loadUser = async () => {
@@ -67,8 +75,47 @@ const App: React.FC = () => {
     );
   }
 
-  if (!user) {
-    return <Login onLogin={handleLogin} />;
+  if (!user && !showPatientPortal) {
+    return (
+      <Login
+        onLogin={handleLogin}
+        onEnterPatientPortal={() => setShowPatientPortal(true)}
+      />
+    );
+  }
+
+  if ((user && isPatient(user)) || showPatientPortal) {
+    return (
+      <div className="min-h-screen flex flex-col bg-slate-50">
+        <PatientNav
+          activeTab={patientTab}
+          setActiveTab={setPatientTab}
+          userName={user?.name}
+          onLogout={() => {
+            if (user) handleLogout();
+            else setShowPatientPortal(false);
+          }}
+        />
+        <main className="flex-1 px-4 sm:px-6 py-6 md:py-8">
+          {patientTab === 'home' && (
+            <PatientDashboard
+              onNavigateToConsultas={() => setPatientTab('farmacia')}
+              onOpenAIChat={() => setOpenFloatingChat(true)}
+            />
+          )}
+          {patientTab === 'farmacia' && (
+            <PatientPharmacy />
+          )}
+        </main>
+        <PatientFooter />
+        <PatientFloatingChat
+          isLoggedIn={!!user}
+          onLoginSuccess={handleLogin}
+          open={openFloatingChat}
+          onOpenChange={setOpenFloatingChat}
+        />
+      </div>
+    );
   }
 
   if (isAdmin(user)) {

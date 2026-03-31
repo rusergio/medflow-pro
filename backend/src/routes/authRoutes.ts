@@ -1,12 +1,27 @@
 import { Router } from 'express';
-import { login, register, getProfile, getUsers, updateProfile, activatePin, changePassword, forgotPassword } from '../controllers/authController.js';
+import {
+  login,
+  register,
+  registerPatient,
+  getProfile,
+  getUsers,
+  updateProfile,
+  activatePin,
+  changePassword,
+  requestPasswordReset,
+  confirmPasswordReset,
+  resetPasswordWithProfilePin,
+} from '../controllers/authController.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
 
 const router = Router();
 
 router.post('/login', login);
 router.post('/register', register);
-router.post('/forgot-password', forgotPassword);
+router.post('/register-patient', registerPatient);
+router.post('/forgot-password/request', requestPasswordReset);
+router.post('/forgot-password/confirm', confirmPasswordReset);
+router.post('/forgot-password/profile-pin', resetPasswordWithProfilePin);
 router.get('/me', authenticate, getProfile);
 router.patch('/me', authenticate, updateProfile);
 router.post('/activate-pin', authenticate, activatePin);

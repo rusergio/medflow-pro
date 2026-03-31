@@ -3,6 +3,7 @@ import {
   getAppointments,
   getAppointmentById,
   createAppointment,
+  createPatientSelfAppointment,
   updateAppointment,
   deleteAppointment,
 } from '../controllers/appointmentController.js';
@@ -12,6 +13,7 @@ const router = Router();
 
 router.get('/', authenticate, getAppointments);
 router.get('/:id', authenticate, getAppointmentById);
+router.post('/self', authenticate, requireRole('PATIENT'), createPatientSelfAppointment);
 router.post('/', authenticate, requireRole('DOCTOR', 'ADMIN'), createAppointment);
 router.put('/:id', authenticate, requireRole('DOCTOR', 'ADMIN'), updateAppointment);
 router.delete('/:id', authenticate, requireRole('ADMIN'), deleteAppointment);

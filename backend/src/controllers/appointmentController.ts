@@ -49,11 +49,91 @@ const updateAppointmentSchema = z.object({
   notes: z.string().optional(),
 });
 
+const patientSelfBookingSchema = z.object({
+  date: z.string(),
+  time: z.string().optional(),
+  especialidadeId: z.string().uuid().optional(),
+  tipo: z.enum(tipoEnum).default('CONSULTA'),
+  notes: z.string().optional(),
+});
+
+export const createPatientSelfAppointment = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId!;
+    const input = patientSelfBookingSchema.parse(req.body);
+
+    const patient = await prisma.patient.findFirst({
+      where: { userId },
+    });
+
+    if (!patient) {
+      return res.status(400).json({ error: 'Perfil de paciente não encontrado. Contacte a receção.' });
+    }
+
+    const doctor = await prisma.user.findFirst({
+      where: { role: 'DOCTOR' },
+    });
+
+    if (!doctor) {
+      return res.status(503).json({ error: 'Nenhum médico disponível para agendamento.' });
+    }
+
+    const time = input.time || '09:00';
+    const appointmentDate = input.date.includes('T')
+      ? new Date(input.date)
+      : new Date(`${input.date}T${time}:00`);
+
+    const appointment = await prisma.appointment.create({
+      data: {
+        patientId: patient.id,
+        doctorId: doctor.id,
+        date: appointmentDate,
+        tipo: input.tipo as any,
+        especialidadeId: input.especialidadeId || undefined,
+        origem: 'INTERNO',
+        notes: input.notes || undefined,
+      },
+      include: {
+        patient: { select: { id: true, nome: true } },
+        doctor: { select: { id: true, name: true, role: true } },
+        especialidade: true,
+      },
+    });
+
+    const { date, time: t } = formatDateTime(appointment.date);
+    res.status(201).json({
+      id: appointment.id,
+      patientId: appointment.patientId,
+      patientName: appointment.patient.nome,
+      doctorName: appointment.doctor.name,
+      especialidade: appointment.especialidade?.nome,
+      date: date,
+      time: t,
+      type: transformAppointmentType.toFrontend(appointment.tipo),
+      status: transformAppointmentStatus.toFrontend(appointment.status),
+    });
+  } catch (error) {
+    throw error;
+  }
+};
+
 export const getAppointments = async (req: Request, res: Response) => {
   try {
-    const { date, status, doctorId, patientId, page = '1', limit = '10' } = req.query;
+    const authReq = req as AuthRequest;
+    const { date, status, doctorId, patientId: queryPatientId, page = '1', limit = '10' } = req.query;
 
     const where: any = {};
+
+    // PATIENT users can only see their own appointments
+    if (authReq.userRole === 'PATIENT') {
+      const patient = await prisma.patient.findFirst({
+        where: { userId: authReq.userId },
+      });
+      if (patient) where.patientId = patient.id;
+      else where.patientId = 'none'; // no appointments if no patient record
+    } else if (queryPatientId) {
+      where.patientId = queryPatientId;
+    }
 
     if (date) {
       const startDate = new Date(date as string);

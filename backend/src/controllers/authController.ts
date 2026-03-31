@@ -1,6 +1,8 @@
+import { randomInt } from 'crypto';
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import prisma from '../config/database.js';
+import { sendPasswordResetCodeEmail } from '../utils/email.js';
 import { hashPassword, comparePassword } from '../utils/hash.js';
 import { generateToken } from '../utils/jwt.js';
 import { transformUserRole } from '../utils/transformers.js';
@@ -15,6 +17,17 @@ const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
   role: z.enum(['DOCTOR', 'NURSE', 'ADMIN']).default('DOCTOR'),
+});
+
+const patientRegisterSchema = z.object({
+  name: z.string().min(2),
+  email: z.string().email(),
+  password: z.string().min(6),
+  telemovel: z.string().min(9),
+  dataNascimento: z.string(),
+  sexo: z.enum(['M', 'F']),
+  nif: z.string().optional(),
+  numeroCc: z.string().optional(),
 });
 
 export const login = async (req: Request, res: Response) => {
@@ -112,6 +125,7 @@ export const getProfile = async (req: Request, res: Response) => {
         avatar: true,
         pinHash: true,
         createdAt: true,
+        patient: { select: { id: true } },
       },
     });
 
@@ -119,11 +133,12 @@ export const getProfile = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Usuário não encontrado' });
     }
 
-    const { pinHash, ...rest } = user;
+    const { pinHash, patient, ...rest } = user as any;
     res.json({
       ...rest,
       role: transformUserRole.toFrontend(user.role),
       pinActive: !!pinHash,
+      patientId: patient?.id ?? null,
     });
   } catch (error) {
     throw error;
@@ -144,9 +159,19 @@ const changePasswordSchema = z.object({
   newPassword: z.string().min(6),
 });
 
-const forgotPasswordSchema = z.object({
+const forgotPasswordProfilePinSchema = z.object({
   email: z.string().email(),
   pin: z.string().min(4).max(6).regex(/^\d+$/, 'PIN deve conter apenas dígitos'),
+  newPassword: z.string().min(6),
+});
+
+const passwordResetRequestSchema = z.object({
+  email: z.string().email(),
+});
+
+const passwordResetConfirmSchema = z.object({
+  email: z.string().email(),
+  pin: z.string().length(6).regex(/^\d+$/, 'Código deve ter 6 dígitos'),
   newPassword: z.string().min(6),
 });
 
@@ -208,9 +233,90 @@ export const changePassword = async (req: Request, res: Response) => {
   }
 };
 
-export const forgotPassword = async (req: Request, res: Response) => {
+/** Código de 6 dígitos enviado por email (ou logado em desenvolvimento). */
+export const requestPasswordReset = async (req: Request, res: Response) => {
   try {
-    const { email, pin, newPassword } = forgotPasswordSchema.parse(req.body);
+    const { email } = passwordResetRequestSchema.parse(req.body);
+    const generic = {
+      ok: true,
+      message:
+        'Se existir uma conta com este email, receberá um código de verificação em breve.',
+    };
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      return res.json(generic);
+    }
+
+    const code = randomInt(100000, 1000000).toString();
+    const codeHash = await hashPassword(code);
+
+    await prisma.passwordResetCode.deleteMany({ where: { email } });
+    await prisma.passwordResetCode.create({
+      data: {
+        email,
+        codeHash,
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+      },
+    });
+
+    try {
+      await sendPasswordResetCodeEmail(email, code);
+    } catch (mailErr) {
+      await prisma.passwordResetCode.deleteMany({ where: { email } });
+      console.error('[requestPasswordReset] Falha ao enviar email:', mailErr);
+      return res.status(503).json({
+        error:
+          'Não foi possível enviar o email. Verifique a configuração SMTP (SMTP_HOST, SMTP_USER, SMTP_PASS) ou tente mais tarde.',
+      });
+    }
+
+    return res.json(generic);
+  } catch (error) {
+    throw error;
+  }
+};
+
+export const confirmPasswordReset = async (req: Request, res: Response) => {
+  try {
+    const { email, pin, newPassword } = passwordResetConfirmSchema.parse(req.body);
+
+    const row = await prisma.passwordResetCode.findFirst({
+      where: {
+        email,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!row) {
+      return res.status(400).json({ error: 'Código inválido ou expirado. Solicite um novo.' });
+    }
+
+    const ok = await comparePassword(pin, row.codeHash);
+    if (!ok) {
+      return res.status(400).json({ error: 'Código incorreto.' });
+    }
+
+    const hashedPassword = await hashPassword(newPassword);
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { email },
+        data: { password: hashedPassword },
+      }),
+      prisma.passwordResetCode.deleteMany({ where: { email } }),
+    ]);
+
+    res.json({ success: true, message: 'Senha alterada com sucesso' });
+  } catch (error) {
+    throw error;
+  }
+};
+
+/** Redefinição com o PIN de segurança definido em Meu Perfil (sem email). */
+export const resetPasswordWithProfilePin = async (req: Request, res: Response) => {
+  try {
+    const { email, pin, newPassword } = forgotPasswordProfilePinSchema.parse(req.body);
 
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user || !user.pinHash) {
@@ -229,6 +335,65 @@ export const forgotPassword = async (req: Request, res: Response) => {
     });
 
     res.json({ success: true, message: 'Senha alterada com sucesso' });
+  } catch (error) {
+    throw error;
+  }
+};
+
+export const registerPatient = async (req: Request, res: Response) => {
+  try {
+    const input = patientRegisterSchema.parse(req.body);
+
+    const existingUser = await prisma.user.findUnique({
+      where: { email: input.email },
+    });
+
+    if (existingUser) {
+      return res.status(400).json({ error: 'Email já cadastrado' });
+    }
+
+    const hashedPassword = await hashPassword(input.password);
+    const dataNascimento = new Date(input.dataNascimento);
+
+    const [user, patient] = await prisma.$transaction([
+      prisma.user.create({
+        data: {
+          name: input.name,
+          email: input.email,
+          password: hashedPassword,
+          role: 'PATIENT',
+        },
+      }),
+      prisma.patient.create({
+        data: {
+          nome: input.name,
+          email: input.email,
+          telemovel: input.telemovel,
+          dataNascimento,
+          sexo: input.sexo,
+          nif: input.nif,
+          numeroCc: input.numeroCc,
+        },
+      }),
+    ]);
+
+    await prisma.patient.update({
+      where: { id: patient.id },
+      data: { userId: user.id },
+    });
+
+    const token = generateToken(user.id, user.role);
+    const { password: _, pinHash, ...userWithoutPassword } = user as any;
+
+    res.status(201).json({
+      token,
+      user: {
+        ...userWithoutPassword,
+        role: transformUserRole.toFrontend(user.role),
+        pinActive: !!pinHash,
+        patientId: patient.id,
+      },
+    });
   } catch (error) {
     throw error;
   }

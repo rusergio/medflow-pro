@@ -53,3 +53,34 @@ export const ensureEspecialidades = async () => {
     });
   }
 };
+
+const TEST_PATIENT_EMAIL = 'paciente@medflowpro.pt';
+const TEST_PATIENT_PASSWORD = 'Paciente123!';
+
+export const ensureTestPatient = async () => {
+  const existing = await prisma.user.findFirst({
+    where: { email: TEST_PATIENT_EMAIL },
+  });
+  if (existing) return;
+
+  const hashedPassword = await hashPassword(TEST_PATIENT_PASSWORD);
+  const user = await prisma.user.create({
+    data: {
+      name: 'Paciente Teste',
+      email: TEST_PATIENT_EMAIL,
+      password: hashedPassword,
+      role: 'PATIENT',
+    },
+  });
+
+  await prisma.patient.create({
+    data: {
+      nome: 'Paciente Teste',
+      email: TEST_PATIENT_EMAIL,
+      telemovel: '912345678',
+      dataNascimento: new Date('1990-01-15'),
+      sexo: 'M',
+      userId: user.id,
+    },
+  });
+};

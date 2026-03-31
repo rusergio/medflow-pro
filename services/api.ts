@@ -62,6 +62,24 @@ class ApiClient {
     return data;
   }
 
+  async registerPatient(data: {
+    name: string;
+    email: string;
+    password: string;
+    telemovel: string;
+    dataNascimento: string;
+    sexo: 'M' | 'F';
+    nif?: string;
+    numeroCc?: string;
+  }) {
+    const res = await this.request<{ token: string; user: any }>('/auth/register-patient', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (res.token) this.setToken(res.token);
+    return res;
+  }
+
   async register(userData: { name: string; email: string; password: string; role?: string }) {
     const data = await this.request<{ token: string; user: any }>('/auth/register', {
       method: 'POST',
@@ -98,8 +116,23 @@ class ApiClient {
     });
   }
 
-  async forgotPassword(email: string, pin: string, newPassword: string) {
-    return this.request<{ success: boolean }>('/auth/forgot-password', {
+  async requestPasswordReset(email: string) {
+    return this.request<{ ok: boolean; message: string }>('/auth/forgot-password/request', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  async confirmPasswordReset(email: string, pin: string, newPassword: string) {
+    return this.request<{ success: boolean }>('/auth/forgot-password/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ email, pin, newPassword }),
+    });
+  }
+
+  /** Redefinir senha com o PIN definido em Meu Perfil (alternativa ao código por email). */
+  async forgotPasswordWithProfilePin(email: string, pin: string, newPassword: string) {
+    return this.request<{ success: boolean }>('/auth/forgot-password/profile-pin', {
       method: 'POST',
       body: JSON.stringify({ email, pin, newPassword }),
     });
@@ -176,6 +209,19 @@ class ApiClient {
 
   async getAppointmentById(id: string) {
     return this.request<any>(`/appointments/${id}`);
+  }
+
+  async createPatientSelfAppointment(data: {
+    date: string;
+    time?: string;
+    especialidadeId?: string;
+    tipo?: string;
+    notes?: string;
+  }) {
+    return this.request<any>('/appointments/self', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   }
 
   async createAppointment(appointmentData: {
